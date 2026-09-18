@@ -531,7 +531,6 @@ dependencies = [
  "cortex-m-rt",
  "embassy-futures",
  "embedded-graphics",
- "embedded-hal 0.2.7",
  "embedded-hal 1.0.0",
  "embedded-hal-async",
  "gc9a01a_driver",
