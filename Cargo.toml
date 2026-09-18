@@ -1,0 +1,50 @@
+[package]
+name = "shottimer"
+version = "0.1.0"
+edition = "2024"
+authors = ["Michael Lohr <michael@lohr.dev>"]
+license = "MIT OR Apache-2.0"
+description = "Vibration-triggered espresso shot-timer firmware for the Waveshare RP2040-LCD-1.28"
+readme = "README.md"
+repository = "https://github.com/michidk/shottimer"
+documentation = "https://github.com/michidk/shottimer"
+homepage = "https://github.com/michidk/shottimer"
+keywords = ["espresso", "firmware", "rp2040", "shot-timer"]
+categories = ["embedded", "hardware-support", "no-std"]
+exclude = ["*.uf2"]
+publish = false
+
+[dependencies]
+cortex-m = "0.7.7"
+cortex-m-rt = "0.7.6"
+embassy-futures = "0.1.2"
+embedded-graphics = "0.8.1"
+embedded-hal = "1.0.0"
+embedded-hal-02 = { package = "embedded-hal", version = "0.2.7" }
+embedded-hal-async = "1.0.0"
+gc9a01a_driver = "1.0.0"
+heapless = "0.9.1"
+libm = "0.2.15"
+panic-halt = "1.0.0"
+ph-qmi8658 = "0.1.1"
+portable-atomic = { version = "1.15.0", features = ["critical-section"] }
+static_cell = "2.1.1"
+u8g2-fonts = "0.8.0"
+waveshare-rp2040-lcd-1-28 = { git = "https://github.com/rp-rs/rp-hal-boards.git", rev = "5135e3dafe3e69b112e6d2d72cfb1856a7679b82" }
+
+[[bin]]
+name = "shottimer"
+test = false
+bench = false
+
+[profile.dev]
+codegen-units = 1
+debug = 2
+incremental = false
+opt-level = "s"
+
+[profile.release]
+codegen-units = 1
+debug = 2
+lto = true
+opt-level = "s"
