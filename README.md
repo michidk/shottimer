@@ -1,74 +1,69 @@
 # shottimer
 
-Rust shot-timer and diagnostic firmware for the **Waveshare RP2040-LCD-1.28**
-(240×240 GC9A01 round LCD + QMI8658 IMU). It intentionally contains no
-water-level support.
+Vibration-triggered espresso shot-timer firmware for the
+**Waveshare RP2040-LCD-1.28** (RP2040, 240×240 GC9A01 display, and QMI8658 IMU).
+There is no water-level or pump integration.
 
-The firmware uses the board definition and display example from the upstream
-[`rp-rs/rp-hal-boards`](https://github.com/rp-rs/rp-hal-boards) Waveshare
-RP2040-LCD-1.28 BSP. The screen is
-driven by `gc9a01a_driver` through a black-backed framebuffer. Only changed
-screen regions are transmitted during normal operation, avoiding both stale
-pixels and full-screen tearing. The QMI8658 is handled by `ph-qmi8658`; the
-timer state machine and vibration statistics remain application code. Their
-behavior and the timer-screen concept were inspired by
-[`lspr98/profitec-go-waterlevel-shottimer`](https://github.com/lspr98/profitec-go-waterlevel-shottimer).
+## Behavior
 
-## Shot detection
+- Samples acceleration ten times at 10 ms intervals.
+- Detects vibration from the largest per-axis standard deviation.
+- Confirms a possible shot after two seconds of continued vibration.
+- Updates elapsed time in calibrated 975 ms increments.
+- Ends a shot after a timer bucket contains no vibration.
+- Retains the completed value for 60 seconds or until a new shot begins.
+- Resets an active shot at 99 displayed seconds.
 
-The detection behavior follows that project's documented behavior: ten accelerometer samples
-are collected 10 ms apart, vibration is the largest per-axis standard deviation,
-and a possible shot must still be vibrating after a two-second confirmation
-delay. Once started, the timer remains active while vibration is observed within
-each aligned 975 ms timer bucket. One positive vibration window is sufficient
-to keep a bucket active; a bucket with no positive window ends the shot.
-Displayed whole seconds use the same 975 ms calibrated increment. An active shot
-resets at the configurable limit of 99 displayed seconds by default. The
-completed shot time remains visible for 60 seconds or until motion starts a new
-shot candidate, whichever happens first.
+Timer mode shows the elapsed value and a two-lap progress arc. The first brown
+shade fills over 25 seconds; the second shade overlays it during the next 25
+seconds. The arc remains full after 50 seconds while the number continues.
 
-The default UI follows the same concept with a large centered timer, an outer
-progress arc. Its configurable lap length defaults to 25 seconds: one brown
-shade fills from 0–25 seconds, then a second brown shade overlays it from 25–50
-seconds. The arc remains full after 50 seconds while the numeric timer continues.
-It shows `0` while ready and elapsed seconds without a unit suffix while timing; battery
-information appears only in Debug mode. Holding the device LCD-face-down selects
-Debug mode. Returning it to any non-down orientation selects Timer mode and
-allows a later face-down transition to trigger again. The orientation signal is
-low-pass filtered, and screen-down must remain continuously detected for at
-least one second before Debug mode activates. The down cone is approximately
-60° from directly face-down. Returning to Timer mode uses a shorter debounce.
-Entering Debug mode resets an active timer.
-Returning from Debug mode also resets all shot-timer state and starts Timer mode
-at `0`.
+Holding the LCD face-down for at least one second enters Debug mode. The
+orientation signal is low-pass filtered and accepts a roughly 60° face-down
+cone. Returning to any non-down orientation returns to Timer mode. Both mode
+changes reset the shot timer.
 
-## What Debug mode shows
+At boot, the display shows solid red, green, and blue for one second each.
 
-- detected QMI8658 I²C address;
-- mean X/Y/Z acceleration in m/s²;
-- the current screen direction (`UP`, `DOWN`, `SIDE`, or `TILTED`);
-- standard deviation for each axis over a 100 ms window;
-- the live and rolling 32-frame peak deviations and configured vibration and
-  UI-toggle limits;
-- battery connected status, voltage, and approximate single-cell LiPo charge
-percentage from the board's GP29 ADC divider;
-- an explicit error screen if the IMU is absent or stops responding.
+## Debug mode
 
-The board has no current-sense circuit, so firmware cannot measure its amp
-draw. That requires an external inline current monitor such as an INA219 or
-INA226. The onboard charger's 1 A rating is a limit, not a current measurement.
-The displayed charge percentage is a voltage-curve estimate and is less
-accurate while charging or under load.
+Debug mode shows:
 
-The sampling settings mirror the referenced project: 10 samples, 10 ms between
-samples, ±8 g accelerometer range, and a 1000 Hz sensor output rate. The tuned
-vibration threshold is 10 m/s². Orientation switching uses the mean Z axis with
-hysteresis and a screen-relative sign verified from the live sensor readings.
-Change the calibration constants in `src/settings.rs` after recording idle,
-handling, and actual-shot values.
+- QMI8658 address;
+- mean and standard deviation for X/Y/Z acceleration;
+- `UP`, `DOWN`, `SIDE`, or `TILTED` screen direction;
+- live and rolling peak vibration;
+- timer state;
+- LiPo connection, voltage, and estimated charge percentage;
+- IMU initialization or read errors.
 
-At boot, the display runs a basic pixel test: solid red, green, and blue for one
-second each, followed by Timer mode.
+Charge percentage is estimated from cell voltage and is less accurate while
+charging or under load. The board has no current-sense circuit, so it cannot
+measure current draw without external hardware.
+
+## Configuration
+
+Calibration values are in [`src/settings.rs`](src/settings.rs), including:
+
+- vibration threshold;
+- shot timeout;
+- completed-result hold duration;
+- progress-lap duration;
+- orientation angle, filtering, and debounce.
+
+## Build and flash
+
+```sh
+rustup target add thumbv6m-none-eabi
+cargo install elf2uf2-rs
+cargo build --release
+```
+
+Hold **BOOT**, connect the board over USB, then run:
+
+```sh
+cargo run --release
+```
 
 ## Hardware mapping
 
@@ -80,54 +75,15 @@ second each, followed by Timer mode.
 | LCD reset / backlight | 12 / 25 |
 | Battery voltage ADC | 29 |
 
-These are the board's built-in connections; no external sensor is required.
-
-## Build and flash
-
-Install Rust, then:
-
-```sh
-rustup target add thumbv6m-none-eabi
-cargo install elf2uf2-rs
-cargo build --release
-```
-
-On WSL, if `type -a rustc` lists `/usr/bin/rustc` before the rustup copy, put
-rustup first for the current shell before building:
-
-```sh
-export PATH="$HOME/.cargo/bin:$PATH"
-```
-
-Hold **BOOT**, connect the board over USB, and run:
-
-```sh
-cargo run --release
-```
-
-`cargo run` uses `elf2uf2-rs -d` to find the RP2040 USB boot drive and copy the
-firmware. Do not power the board simultaneously from unsafe or unrelated power
-supplies.
-
-## Calibration run
-
-Record the displayed `peak sd` in four situations: untouched device, ordinary
-handling, the vibration produced during an actual shot, and other nearby
-vibration. A useful threshold is above the worst non-shot value and comfortably
-below the lowest shot value. If those ranges overlap, adjust the mounting or
-sample window before relying on automatic timing.
+These are built-in board connections; no external vibration sensor is needed.
 
 ## Acknowledgements and licensing
 
-The shot-detection behavior, timing defaults, and circular timer-screen concept
-were inspired by
+Shot detection and the circular timer concept were inspired by
 [`lspr98/profitec-go-waterlevel-shottimer`](https://github.com/lspr98/profitec-go-waterlevel-shottimer).
-This is an independent Rust implementation and does not include that project's
-source code. The upstream repository did not declare a software license when
-this acknowledgement was written; this project's license does not grant rights
-to the upstream project.
+This is an independent Rust implementation and contains none of that project's
+source code. The referenced repository did not declare a software license when
+this acknowledgement was written.
 
-The shottimer source is available under your choice of the
-[Apache License 2.0](LICENSE-APACHE) or [MIT license](LICENSE-MIT). Third-party
-components and embedded fonts retain their own licenses; see
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+This project is available under either the [Apache License 2.0](LICENSE-APACHE)
+or [MIT License](LICENSE-MIT).
