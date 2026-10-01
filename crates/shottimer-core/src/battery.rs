@@ -1,8 +1,8 @@
-//! Battery voltage conversion for the board's GP29 ADC divider.
+//! Single-cell LiPo estimation and voltage trends, independent of MCU ADC units.
 
-const ADC_REFERENCE_VOLTS: f32 = 3.3;
+use crate::settings::{BATTERY_ADC_REFERENCE_VOLTS, BATTERY_VOLTAGE_DIVIDER_RATIO};
+
 const ADC_MAX_COUNT: f32 = 4095.0;
-const VOLTAGE_DIVIDER_RATIO: f32 = 0.5;
 const CONNECTED_THRESHOLD_VOLTS: f32 = 2.5;
 const FILTER_ALPHA: f32 = 0.2;
 const TREND_WINDOW_MS: u64 = 30_000;
@@ -29,8 +29,15 @@ pub struct BatteryStatus {
 }
 
 impl BatteryStatus {
+    /// Voltage-rise heuristic, not a reading of the charger's inaccessible STAT pin.
+    pub fn charging_indicated(&self) -> bool {
+        self.connected && self.voltage_trend == VoltageTrend::Rising
+    }
+
     pub fn from_adc_counts(counts: u16) -> Self {
-        let voltage = counts as f32 * ADC_REFERENCE_VOLTS / ADC_MAX_COUNT / VOLTAGE_DIVIDER_RATIO;
+        let voltage = counts as f32 * BATTERY_ADC_REFERENCE_VOLTS
+            / ADC_MAX_COUNT
+            / BATTERY_VOLTAGE_DIVIDER_RATIO;
         Self {
             raw_counts: counts,
             voltage,
@@ -45,6 +52,7 @@ impl BatteryStatus {
 
 pub struct BatteryMonitor {
     filtered_counts: Option<f32>,
+    filtered_voltage: Option<f32>,
     baseline_voltage: Option<f32>,
     baseline_ms: u64,
     millivolts_per_minute: i16,
@@ -55,6 +63,7 @@ impl BatteryMonitor {
     pub const fn new() -> Self {
         Self {
             filtered_counts: None,
+            filtered_voltage: None,
             baseline_voltage: None,
             baseline_ms: 0,
             millivolts_per_minute: 0,
@@ -63,12 +72,29 @@ impl BatteryMonitor {
     }
 
     pub fn update(&mut self, counts: u16, now_ms: u64) -> BatteryStatus {
+        self.update_voltage(
+            counts,
+            BatteryStatus::from_adc_counts(counts).voltage,
+            now_ms,
+        )
+    }
+
+    /// Accept a board-calibrated voltage; ADC references/dividers differ by MCU.
+    pub fn update_voltage(&mut self, counts: u16, voltage: f32, now_ms: u64) -> BatteryStatus {
         let filtered_counts = match self.filtered_counts {
             Some(filtered) => filtered + FILTER_ALPHA * (counts as f32 - filtered),
             None => counts as f32,
         };
         self.filtered_counts = Some(filtered_counts);
         let mut status = BatteryStatus::from_adc_counts((filtered_counts + 0.5) as u16);
+        let voltage = match self.filtered_voltage {
+            Some(filtered) => filtered + FILTER_ALPHA * (voltage - filtered),
+            None => voltage,
+        };
+        self.filtered_voltage = Some(voltage);
+        status.voltage = voltage;
+        status.connected = voltage >= CONNECTED_THRESHOLD_VOLTS;
+        status.charge_percent = estimate_charge_percent(voltage);
 
         if !status.connected {
             self.baseline_voltage = None;
@@ -147,7 +173,34 @@ fn estimate_charge_percent(voltage: f32) -> u8 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn calibrated_board_voltage_does_not_use_rp2040_adc_scaling() {
+        let mut monitor = super::BatteryMonitor::new();
+        let status = monitor.update_voltage(2800, 3.85, 0);
+        assert_eq!(status.raw_counts, 2800);
+        assert!((status.voltage - 3.85).abs() < 0.001);
+        assert_eq!(status.charge_percent, 50);
+        assert!(status.connected);
+        let filtered = monitor.update_voltage(3000, 4.10, 100);
+        assert!((filtered.voltage - 3.90).abs() < 0.001);
+        assert_eq!(filtered.raw_counts, 2840);
+    }
     use super::*;
+
+    #[test]
+    fn charging_indicator_requires_a_connected_battery_and_rising_voltage() {
+        let mut status = BatteryStatus::from_adc_counts(2500);
+        assert!(!status.charging_indicated());
+        status.voltage_trend = VoltageTrend::Rising;
+        assert!(status.charging_indicated());
+        status.voltage_trend = VoltageTrend::Stable;
+        assert!(!status.charging_indicated());
+        status.voltage_trend = VoltageTrend::Falling;
+        assert!(!status.charging_indicated());
+        status.voltage_trend = VoltageTrend::Rising;
+        status.connected = false;
+        assert!(!status.charging_indicated());
+    }
 
     #[test]
     fn converts_the_board_voltage_divider() {

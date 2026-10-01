@@ -1,0 +1,21 @@
+[package]
+name = "shottimer-app"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+shottimer-core.workspace = true
+embedded-hal.workspace = true
+embedded-hal-async.workspace = true
+embassy-futures.workspace = true
+embedded-graphics.workspace = true
+gc9a01a_driver.workspace = true
+heapless.workspace = true
+libm.workspace = true
+ph-qmi8658.workspace = true
+static_cell.workspace = true
+u8g2-fonts.workspace = true

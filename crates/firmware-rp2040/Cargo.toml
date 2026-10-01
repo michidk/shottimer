@@ -1,0 +1,28 @@
+[package]
+name = "firmware-rp2040"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+shottimer-core.workspace = true
+shottimer-app.workspace = true
+embedded-hal.workspace = true
+embedded-hal-async.workspace = true
+cortex-m = "0.7.7"
+cortex-m-rt = "0.7.6"
+embedded-hal-02 = { package = "embedded-hal", version = "0.2.7" }
+panic-halt = "1.0.0"
+usb-device = "0.3.2"
+usbd-serial = "0.2.2"
+portable-atomic = { version = "1.15.0", features = ["critical-section"] }
+waveshare-rp2040-lcd-1-28 = { git = "https://github.com/rp-rs/rp-hal-boards.git", rev = "5135e3dafe3e69b112e6d2d72cfb1856a7679b82" }
+
+[[bin]]
+name = "shottimer-rp2040"
+path = "src/main.rs"
+test = false
+bench = false

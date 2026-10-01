@@ -1,0 +1,24 @@
+[package]
+name = "firmware-esp32s3"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+embassy-embedded-hal = "0.6.0"
+shottimer-core.workspace = true
+shottimer-app.workspace = true
+embedded-hal.workspace = true
+esp-hal = { version = "1.2.2", features = ["esp32s3", "unstable"] }
+esp-bootloader-esp-idf = { version = "0.6.0", features = ["esp32s3"] }
+panic-halt = "1.0.0"
+portable-atomic = { version = "1.15.0", features = ["critical-section"] }
+
+[[bin]]
+name = "shottimer-esp32s3"
+path = "src/main.rs"
+test = false
+bench = false

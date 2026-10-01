@@ -102,6 +102,23 @@ mod tests {
     }
 
     #[test]
+    fn vibration_requires_deviation_above_configured_threshold() {
+        let threshold = crate::settings::VIBRATION_SENSITIVITY_THRESHOLD;
+        for (deviation, expected) in [
+            (threshold * 0.9, false),
+            (threshold, false),
+            (threshold * 1.1, true),
+        ] {
+            let stats = MotionStats {
+                mean: [0.0, 0.0, 9.81],
+                deviation: [0.0, deviation, 0.0],
+                peak_deviation: deviation,
+            };
+            assert_eq!(stats.is_vibrating(threshold), expected);
+        }
+    }
+
+    #[test]
     fn rolling_peak_expires_old_values() {
         let mut peaks = PeakWindow::<3>::new();
         assert_eq!(peaks.push(2.0), 2.0);

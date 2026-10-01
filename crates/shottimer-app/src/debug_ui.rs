@@ -10,7 +10,7 @@ use embedded_graphics::{
     text::{Alignment, Text},
 };
 use heapless::String;
-use shottimer::{
+use shottimer_core::{
     battery::{BatteryStatus, VoltageTrend},
     diagnostics::MotionStats,
     settings::VIBRATION_SENSITIVITY_THRESHOLD,

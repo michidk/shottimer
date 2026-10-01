@@ -1,10 +1,11 @@
-[build]
-target = "thumbv6m-none-eabi"
+[alias]
+esp32s3 = "build --release -p firmware-esp32s3 --target xtensa-esp32s3-none-elf -Zbuild-std=core"
+rp2040 = "build --release -p firmware-rp2040 --target thumbv6m-none-eabi"
 
 [target.thumbv6m-none-eabi]
 runner = "elf2uf2-rs -d"
-rustflags = [
-  "-C", "link-arg=--nmagic",
-  "-C", "link-arg=-Tlink.x",
-]
+rustflags = ["-C", "link-arg=--nmagic", "-C", "link-arg=-Tlink.x"]
 
+[target.xtensa-esp32s3-none-elf]
+runner = "espflash flash --monitor --chip esp32s3 --flash-size 16mb"
+rustflags = ["-C", "link-arg=-Tlinkall.x"]

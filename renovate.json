@@ -1,5 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "semanticCommits": "enabled",
   "extends": [
     "config:recommended",
     ":enableVulnerabilityAlertsWithLabel('security')"
@@ -14,6 +15,11 @@
         "cargo"
       ],
       "groupName": "All Cargo Dependencies"
+    },
+    {
+      "matchManagers": ["cargo"],
+      "matchDepNames": ["embedded-hal-02"],
+      "allowedVersions": "<1.0.0"
     }
   ]
 }
