@@ -108,10 +108,7 @@ pub fn run<P: Platform>(mut board: P) -> ! {
             board.poll();
             // Keep a low-rate voltage check to notice power-only charging even
             // when USB cannot enumerate. The charger has no MCU status signal.
-            let reading = board.read_battery().unwrap_or(crate::BatteryReading {
-                raw_counts: 0,
-                voltage: 0.0,
-            });
+            let reading = read_battery(&mut board);
             let sleeping_battery =
                 battery_monitor.update_voltage(reading.raw_counts, reading.voltage, board.now_ms());
             let powered = board.externally_powered() || sleeping_battery.charging_indicated();
@@ -162,10 +159,7 @@ pub fn run<P: Platform>(mut board: P) -> ! {
             continue;
         }
 
-        let reading = board.read_battery().unwrap_or(crate::BatteryReading {
-            raw_counts: 0,
-            voltage: 0.0,
-        });
+        let reading = read_battery(&mut board);
         let stats = MotionStats::from_samples(&samples);
         let recent_peak = recent_peaks.push(stats.peak_deviation);
         let now_ms = board.now_ms();
@@ -273,6 +267,18 @@ pub fn run<P: Platform>(mut board: P) -> ! {
     }
 }
 
+fn read_battery<P: Platform>(board: &mut P) -> crate::BatteryReading {
+    let empty = crate::BatteryReading {
+        raw_counts: 0,
+        voltage: 0.0,
+    };
+    if USE_BATTERY {
+        board.read_battery().unwrap_or(empty)
+    } else {
+        empty
+    }
+}
+
 fn draw_calibrating<D>(display: &mut D, average_raw: [f32; 3], samples: u32)
 where
     D: DrawTarget<Color = Rgb565>,
@@ -348,6 +354,7 @@ mod tests {
     struct Trace {
         colors: Vec<u16>,
         reads: usize,
+        battery_reads: usize,
         logs: usize,
         sleeps: usize,
         wakes: usize,
@@ -384,6 +391,7 @@ mod tests {
             Ok([vibration, 0, z])
         }
         fn read_battery(&mut self) -> Result<BatteryReading, HardwareError> {
+            self.trace.borrow_mut().battery_reads += 1;
             Ok(BatteryReading {
                 raw_counts: 2400,
                 voltage: 3.85,
@@ -450,6 +458,7 @@ mod tests {
         let trace = trace.borrow();
         assert_eq!(trace.colors, [0xf800, 0x07e0, 0x001f]);
         assert!(trace.reads >= 300);
+        assert_eq!(trace.battery_reads > 0, USE_BATTERY);
         assert!(trace.logs > 100);
         assert_eq!(trace.sleeps, 1);
         assert_eq!(trace.wakes, 1);

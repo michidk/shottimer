@@ -95,7 +95,7 @@ Edit them, rebuild, and flash the firmware to apply changes.
 |---|---|---|
 | `START_IN_DEBUG_MODE` | `false` | Start in Timer mode; `true` selects Debug mode after calibration. |
 | `SHOW_SHOT_HISTORY` | `true` | Show the three previous valid shot times throughout Timer mode; `false` hides the row in every state. |
-| `DISPLAY_ROTATION_DEGREES` | `270` | Clockwise LCD rotation (default is 90° left): `0`, `90`, `180`, or `270`. Does not change physical flip detection. |
+| `DISPLAY_ROTATION_DEGREES` | `90` | Clockwise LCD rotation: `0`, `90`, `180`, or `270`. Does not change physical flip detection. |
 | `DISPLAY_BRIGHTNESS_PERCENT` | `100` | Backlight PWM duty, `0`–`100`; sleep turns it off and wake restores this level. |
 | `SLEEP_TIMEOUT_SECONDS` | `60` | Idle time before sleep. Completed results use their own hold timeout. |
 | `SLEEP_WAKE_THRESHOLD_MG` | `50` | Hardware wake-on-motion acceleration change in mg; separate from the running-shot SD threshold. Higher is less sensitive. |
@@ -104,6 +104,7 @@ Edit them, rebuild, and flash the firmware to apply changes.
 | `CALIBRATION_DURATION_MS` | `3000` | Nominal calibration sampling duration after RGB testing; display updates add overhead. Must be a positive multiple of `SAMPLE_DELAY_MS`. |
 | `USB_LOGGING_ENABLED` | `true` | Enable USB CDC (RP2040) or UART (ESP32-S3) diagnostic logs. |
 | `USB_LOG_INTERVAL_MS` | `500` | Positive interval between diagnostic records; `500` means twice per second. |
+| `USE_BATTERY` | `false` | Enable battery monitoring and UI; false hides all battery information in both modes and the charging ring. |
 | `BATTERY_ADC_REFERENCE_VOLTS` | `3.3` | RP2040 ADC reference voltage in volts; ESP32-S3 uses HAL/eFuse calibration. |
 | `BATTERY_VOLTAGE_DIVIDER_RATIO` | `0.5` | RP2040 ADC input/battery ratio; ESP32-S3 uses its own 1/3 divider setting. |
 | `VIBRATION_SENSITIVITY_THRESHOLD` | `1.0` | Largest per-axis standard deviation in m/s² required for vibration; higher is less sensitive. |
@@ -143,7 +144,14 @@ Actual current savings and wake sensitivity still require testing on the board.
 
 ### Charge indicator
 
-Timer mode shows a smaller green inner progress ring and `~N%` when the battery
+Set `USE_BATTERY = true` when fitting a battery. With the default `false`,
+battery monitoring is disabled, both modes hide all battery information,
+and Timer mode hides the charging ring. USB host detection remains active on
+RP2040 and still prevents sleep while a host is connected.
+This setting is not hot-plug detection: USB can power the charger rail even
+without a battery. Changing the flag requires rebuilding and flashing.
+
+Timer mode shows a smaller green inner progress ring and `N%` when the battery
 voltage trend is rising, or on RP2040 when a USB host is enumerated. Sleep is
 disabled in either case. ESP32-S3's CH343 bridge cannot report USB host state
 to firmware, so that board relies solely on the voltage-trend heuristic.

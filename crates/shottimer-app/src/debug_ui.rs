@@ -13,7 +13,7 @@ use heapless::String;
 use shottimer_core::{
     battery::{BatteryStatus, VoltageTrend},
     diagnostics::MotionStats,
-    settings::VIBRATION_SENSITIVITY_THRESHOLD,
+    settings::{USE_BATTERY, VIBRATION_SENSITIVITY_THRESHOLD},
     shot_timer::{ShotState, ShotTimer},
     ui_mode::{ScreenAxis, ScreenDirection},
 };
@@ -153,6 +153,9 @@ pub fn draw_values<D>(
     );
 
     clear_region(display, 25, 184, 190, 34);
+    if !USE_BATTERY {
+        return;
+    }
     line.clear();
     let battery_color = match status.battery.voltage_trend {
         VoltageTrend::Rising => Rgb565::GREEN,
@@ -162,7 +165,7 @@ pub fn draw_values<D>(
     if status.battery.connected {
         write!(
             line,
-            "BAT {:.2}V ~{}% ADC:{}",
+            "BAT {:.2}V {}% ADC:{}",
             status.battery.voltage, status.battery.charge_percent, status.battery.raw_counts
         )
         .ok();

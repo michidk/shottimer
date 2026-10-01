@@ -129,7 +129,7 @@ fn draw_charge<D: DrawTarget<Color = Rgb565>>(display: &mut D, percent: u8) {
         draw_charge_arc(display, sweep, Rgb565::new(0, 26, 4), color);
     }
     let mut text = heapless::String::<8>::new();
-    write!(text, "~{percent}%").ok();
+    write!(text, "{percent}%").ok();
     Text::with_alignment(
         &text,
         Point::new(120, 222),

@@ -10,7 +10,7 @@ pub const START_IN_DEBUG_MODE: bool = false;
 pub const SHOW_SHOT_HISTORY: bool = true;
 
 /// Clockwise LCD rotation relative to the current board orientation.
-pub const DISPLAY_ROTATION_DEGREES: u16 = 270;
+pub const DISPLAY_ROTATION_DEGREES: u16 = 90;
 
 /// Backlight PWM duty cycle, from 0 (off) to 100 (full brightness).
 pub const DISPLAY_BRIGHTNESS_PERCENT: u8 = 100;
@@ -33,6 +33,10 @@ pub const CALIBRATION_DURATION_MS: u32 = 3_000;
 /// Emit USB CDC diagnostics when a terminal is connected.
 pub const USB_LOGGING_ENABLED: bool = true;
 pub const USB_LOG_INTERVAL_MS: u64 = 500;
+
+/// Enable battery monitoring, charge estimates, and battery UI.
+/// The charger can power the measured rail over USB without a battery.
+pub const USE_BATTERY: bool = false;
 
 /// Battery ADC reference voltage and ADC-input/battery divider ratio.
 pub const BATTERY_ADC_REFERENCE_VOLTS: f32 = 3.3;

@@ -1,6 +1,6 @@
 //! Single-cell LiPo estimation and voltage trends, independent of MCU ADC units.
 
-use crate::settings::{BATTERY_ADC_REFERENCE_VOLTS, BATTERY_VOLTAGE_DIVIDER_RATIO};
+use crate::settings::{BATTERY_ADC_REFERENCE_VOLTS, BATTERY_VOLTAGE_DIVIDER_RATIO, USE_BATTERY};
 
 const ADC_MAX_COUNT: f32 = 4095.0;
 const CONNECTED_THRESHOLD_VOLTS: f32 = 2.5;
@@ -51,6 +51,7 @@ impl BatteryStatus {
 }
 
 pub struct BatteryMonitor {
+    battery_enabled: bool,
     filtered_counts: Option<f32>,
     filtered_voltage: Option<f32>,
     baseline_voltage: Option<f32>,
@@ -61,7 +62,12 @@ pub struct BatteryMonitor {
 
 impl BatteryMonitor {
     pub const fn new() -> Self {
+        Self::with_battery_enabled(USE_BATTERY)
+    }
+
+    pub const fn with_battery_enabled(battery_enabled: bool) -> Self {
         Self {
+            battery_enabled,
             filtered_counts: None,
             filtered_voltage: None,
             baseline_voltage: None,
@@ -93,8 +99,12 @@ impl BatteryMonitor {
         };
         self.filtered_voltage = Some(voltage);
         status.voltage = voltage;
-        status.connected = voltage >= CONNECTED_THRESHOLD_VOLTS;
-        status.charge_percent = estimate_charge_percent(voltage);
+        status.connected = self.battery_enabled && voltage >= CONNECTED_THRESHOLD_VOLTS;
+        status.charge_percent = if status.connected {
+            estimate_charge_percent(voltage)
+        } else {
+            0
+        };
 
         if !status.connected {
             self.baseline_voltage = None;
@@ -138,7 +148,7 @@ impl Default for BatteryMonitor {
 
 fn estimate_charge_percent(voltage: f32) -> u8 {
     // Approximate resting-voltage curve for a single-cell LiPo. Readings while
-    // charging or under load will differ, so the UI marks this value with `~`.
+    // charging or under load will differ; this is not a fuel-gauge measurement.
     const CURVE: [(f32, u8); 12] = [
         (3.20, 0),
         (3.50, 5),
@@ -175,7 +185,7 @@ fn estimate_charge_percent(voltage: f32) -> u8 {
 mod tests {
     #[test]
     fn calibrated_board_voltage_does_not_use_rp2040_adc_scaling() {
-        let mut monitor = super::BatteryMonitor::new();
+        let mut monitor = super::BatteryMonitor::with_battery_enabled(true);
         let status = monitor.update_voltage(2800, 3.85, 0);
         assert_eq!(status.raw_counts, 2800);
         assert!((status.voltage - 3.85).abs() < 0.001);
@@ -186,6 +196,27 @@ mod tests {
         assert_eq!(filtered.raw_counts, 2840);
     }
     use super::*;
+
+    #[test]
+    fn disabled_battery_keeps_adc_diagnostics_without_charge_estimates() {
+        let mut monitor = BatteryMonitor::with_battery_enabled(false);
+        let status = monitor.update_voltage(2500, 4.0, 0);
+        assert!(!status.connected);
+        assert_eq!(status.charge_percent, 0);
+        assert_eq!(status.raw_counts, 2500);
+        assert!((status.voltage - 4.0).abs() < 0.001);
+        let rising = monitor.update_voltage(2600, 4.2, TREND_WINDOW_MS);
+        assert!(!rising.connected);
+        assert!(!rising.charging_indicated());
+        assert_eq!(rising.charge_percent, 0);
+        assert_eq!(rising.voltage_trend, VoltageTrend::Unknown);
+    }
+
+    #[test]
+    fn default_monitor_obeys_battery_installation_setting() {
+        let status = BatteryMonitor::new().update_voltage(2500, 4.0, 0);
+        assert_eq!(status.connected, USE_BATTERY);
+    }
 
     #[test]
     fn charging_indicator_requires_a_connected_battery_and_rising_voltage() {
@@ -226,7 +257,7 @@ mod tests {
 
     #[test]
     fn measures_sustained_voltage_trends() {
-        let mut monitor = BatteryMonitor::new();
+        let mut monitor = BatteryMonitor::with_battery_enabled(true);
         monitor.update(2_420, 0);
         let rising = monitor.update(2_450, TREND_WINDOW_MS);
         assert_eq!(rising.voltage_trend, VoltageTrend::Rising);
@@ -239,7 +270,7 @@ mod tests {
 
     #[test]
     fn ignores_small_voltage_changes() {
-        let mut monitor = BatteryMonitor::new();
+        let mut monitor = BatteryMonitor::with_battery_enabled(true);
         monitor.update(2_500, 0);
         let stable = monitor.update(2_501, TREND_WINDOW_MS);
         assert_eq!(stable.voltage_trend, VoltageTrend::Stable);
