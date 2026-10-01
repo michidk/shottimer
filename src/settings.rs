@@ -3,30 +3,34 @@
 /// Delay between accelerometer readings in one motion window.
 pub const SAMPLE_DELAY_MS: u32 = 10;
 
+/// Selects the UI shown after the RGB display test.
+pub const START_IN_DEBUG_MODE: bool = false;
+
 /// Peak per-axis standard deviation that counts as vibration, in m/s².
-pub const VIBRATION_THRESHOLD: f32 = 10.0;
+/// Increase this value to reduce sensitivity; decrease it to detect weaker vibration.
+pub const VIBRATION_SENSITIVITY_THRESHOLD: f32 = 12.0;
 
-/// Minimum normalized Z component accepted as screen-up/down.
-/// 0.5 accepts orientations within roughly 60° of directly face-down.
-pub const SCREEN_VERTICAL_COS_THRESHOLD: f32 = 0.5;
+/// Minimum normalized calibrated-axis component accepted as screen-up/down.
+/// 0.7 accepts orientations within roughly 46° of directly face-up/down.
+pub const SCREEN_VERTICAL_COS_THRESHOLD: f32 = 0.7;
 
-/// Normalized screen-relative Z above which the device is no longer screen-down.
-pub const SCREEN_DOWN_RELEASE_COS: f32 = -0.3;
+/// Weight of each new 100 ms orientation reading in the low-pass filter.
+pub const ORIENTATION_FILTER_ALPHA: f32 = 0.2;
 
-/// Measured sign converting the QMI8658 Z reading to screen-relative Z.
-pub const SCREEN_UP_Z_SIGN: f32 = 1.0;
-
-/// Exponential low-pass weight applied to each 100 ms orientation window.
-pub const ORIENTATION_FILTER_ALPHA: f32 = 0.4;
-
-/// Consecutive filtered 100 ms windows required to enter Debug mode.
+/// Consecutive averaged 100 ms face-down windows required to arm a mode change.
 pub const SCREEN_DOWN_DEBOUNCE_WINDOWS: u8 = 10;
 
-/// Consecutive filtered 100 ms windows required to return to Timer mode.
+/// Consecutive averaged 100 ms face-up windows required to complete a mode change.
 pub const SCREEN_RELEASE_DEBOUNCE_WINDOWS: u8 = 3;
 
 /// Maximum displayed shot duration and full-scale value for the progress arc.
 pub const SHOT_TIMEOUT_SECONDS: u64 = 99;
+
+/// Completed shots shorter than this are discarded instead of retained.
+pub const MINIMUM_SHOT_SECONDS: u64 = 5;
+
+/// Continuous vibration required to replace a retained result with a new shot.
+pub const RESTART_CONFIRM_SECONDS: u64 = 3;
 
 /// Seconds represented by one complete lap of the Timer-mode progress arc.
 pub const PROGRESS_LAP_SECONDS: u64 = 25;

@@ -5,26 +5,39 @@
 mod debug_ui;
 mod timer_ui;
 
+use core::fmt::Write;
+
 use embassy_futures::block_on;
-use embedded_graphics::{pixelcolor::Rgb565, prelude::RgbColor};
+use embedded_graphics::{
+    mono_font::{MonoTextStyle, ascii::FONT_10X20},
+    pixelcolor::Rgb565,
+    prelude::*,
+    text::{Alignment, Text},
+};
 use embedded_hal::{delay::DelayNs, digital::OutputPin};
 use embedded_hal_02::adc::OneShot;
 use gc9a01a_driver::{FrameBuffer, GC9A01A, Orientation};
+use heapless::String;
 use panic_halt as _;
 use ph_qmi8658::{
     AccelConfig, AccelOutputDataRate, AccelRange, Config, I2cConfig, Qmi8658Address, Qmi8658I2c,
 };
 use shottimer::{
-    battery::BatteryStatus,
+    battery::BatteryMonitor,
     diagnostics::{MotionStats, PeakWindow, SAMPLE_COUNT},
     settings::{
         METERS_PER_SECOND_SQUARED_PER_COUNT, RECENT_PEAK_WINDOWS, SAMPLE_DELAY_MS,
-        VIBRATION_THRESHOLD,
+        START_IN_DEBUG_MODE, VIBRATION_SENSITIVITY_THRESHOLD,
     },
     shot_timer::ShotTimer,
-    ui_mode::{FlipModeSwitch, UiMode},
+    ui_mode::{FlipModeSwitch, OrientationCalibration, ScreenAxis, UiMode},
 };
 use static_cell::StaticCell;
+use usb_device::{
+    class_prelude::UsbBusAllocator,
+    device::{StringDescriptors, UsbDeviceBuilder, UsbVidPid},
+};
+use usbd_serial::SerialPort;
 use waveshare_rp2040_lcd_1_28::{
     Pins, XOSC_CRYSTAL_FREQ, entry,
     hal::{
@@ -49,7 +62,12 @@ use crate::timer_ui::{
 
 const LCD_SIZE: u32 = 240;
 const LCD_BUFFER_BYTES: usize = (LCD_SIZE * LCD_SIZE * 2) as usize;
-const BATTERY_SAMPLES: u32 = 8;
+const BATTERY_SAMPLES: u32 = 32;
+const COLOR_TEST_DURATION_MS: u32 = 1_000;
+const CALIBRATION_DURATION_MS: u32 = 3_000;
+const CALIBRATION_SAMPLES: u32 = CALIBRATION_DURATION_MS / SAMPLE_DELAY_MS;
+const CALIBRATION_DISPLAY_INTERVAL_SAMPLES: u32 = 10;
+const SERIAL_LOG_INTERVAL_MS: u64 = 500;
 static FRAME_STORAGE: StaticCell<[u8; LCD_BUFFER_BYTES]> = StaticCell::new();
 
 #[entry]
@@ -100,17 +118,10 @@ fn main() -> ! {
     let frame_storage = FRAME_STORAGE.init_with(|| [0; LCD_BUFFER_BYTES]);
     let mut frame = FrameBuffer::new(frame_storage, LCD_SIZE, LCD_SIZE);
     backlight.set_high().unwrap();
-    for color in [Rgb565::RED, Rgb565::GREEN, Rgb565::BLUE] {
-        frame.clear(color);
-        display.show(frame.get_buffer()).unwrap();
-        timer.delay_ms(1_000);
-    }
-    frame.clear(Rgb565::BLACK);
-    draw_timer_frame(&mut frame);
-    display.show(frame.get_buffer()).unwrap();
 
     let mut adc = hal::Adc::new(pac.ADC, &mut pac.RESETS);
-    let mut battery_pin = hal::adc::AdcPin::new(pins.gp29).unwrap();
+    let battery_gpio = pins.gp29.into_pull_type::<hal::gpio::PullNone>();
+    let mut battery_pin = hal::adc::AdcPin::new(battery_gpio).unwrap();
 
     let sda = pins.gp6.into_function();
     let scl = pins.gp7.into_function();
@@ -124,7 +135,8 @@ fn main() -> ! {
     );
     let accel = AccelConfig::new(AccelRange::G8, AccelOutputDataRate::Hz1000);
     let config = Config::new().with_accel_config(accel).without_gyro();
-    let i2c_config = I2cConfig::new(Qmi8658Address::Primary.addr());
+    // The board produces valid physical acceleration only in little-endian mode.
+    let i2c_config = I2cConfig::new(Qmi8658Address::Primary.addr()).with_big_endian(false);
     let mut imu: Qmi8658I2c<_> = Qmi8658I2c::with_i2c_config(i2c, None, None, config, i2c_config);
     let addresses = [
         Qmi8658Address::Primary.addr(),
@@ -147,30 +159,100 @@ fn main() -> ! {
         }
     };
 
+    for color in [Rgb565::RED, Rgb565::GREEN, Rgb565::BLUE] {
+        frame.clear(color);
+        display.show(frame.get_buffer()).unwrap();
+        timer.delay_ms(COLOR_TEST_DURATION_MS);
+    }
+
+    let mut imu_read_errors = 0u32;
+    let mut calibration = OrientationCalibration::new();
+    frame.clear(Rgb565::BLACK);
+    draw_calibrating(&mut frame, [0.0; 3], calibration.sample_count());
+    display.show(frame.get_buffer()).unwrap();
+    for attempt in 1..=CALIBRATION_SAMPLES {
+        if let Ok(value) = block_on(imu.read_accel_raw()) {
+            calibration.add([
+                value.data.x as f32,
+                value.data.y as f32,
+                value.data.z as f32,
+            ]);
+        } else {
+            imu_read_errors = imu_read_errors.saturating_add(1);
+        }
+        timer.delay_ms(SAMPLE_DELAY_MS);
+
+        if attempt % CALIBRATION_DISPLAY_INTERVAL_SAMPLES == 0 {
+            frame.clear(Rgb565::BLACK);
+            draw_calibrating(
+                &mut frame,
+                calibration.mean().unwrap_or([0.0; 3]),
+                calibration.sample_count(),
+            );
+            display.show(frame.get_buffer()).ok();
+        }
+    }
+    let screen_up_mean = calibration.mean().unwrap_or([0.0, 0.0, 1.0]);
+
+    let usb_bus = UsbBusAllocator::new(hal::usb::UsbBus::new(
+        pac.USBCTRL_REGS,
+        pac.USBCTRL_DPRAM,
+        clocks.usb_clock,
+        true,
+        &mut pac.RESETS,
+    ));
+    let mut serial = SerialPort::new(&usb_bus);
+    let mut usb_device = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x16c0, 0x27dd))
+        .strings(&[StringDescriptors::default()
+            .manufacturer("Shottimer")
+            .product("Shottimer Debug Serial")
+            .serial_number("SHOT1")])
+        .unwrap()
+        .device_class(2)
+        .build();
+
+    frame.clear(Rgb565::BLACK);
+    let initial_mode = if START_IN_DEBUG_MODE {
+        UiMode::Debug
+    } else {
+        UiMode::Timer
+    };
+    match initial_mode {
+        UiMode::Timer => draw_timer_frame(&mut frame),
+        UiMode::Debug => draw_debug_frame(&mut frame),
+    }
+    display.show(frame.get_buffer()).unwrap();
+
     let now_ms = milliseconds(&timer);
     let mut shot_timer = ShotTimer::new(now_ms);
+    let mut battery_monitor = BatteryMonitor::new();
     let mut previous_state = shot_timer.state();
     let mut recent_peaks = PeakWindow::<RECENT_PEAK_WINDOWS>::new();
-    let mut mode_switch = FlipModeSwitch::new(UiMode::Timer);
+    let mut mode_switch = FlipModeSwitch::calibrated(initial_mode, screen_up_mean);
     let mut previous_timer_view = None;
+    let mut last_serial_log_ms = 0;
 
     loop {
         let mut samples = [[0.0; 3]; SAMPLE_COUNT];
         let mut read_ok = true;
         for sample in &mut samples {
+            usb_device.poll(&mut [&mut serial]);
             match block_on(imu.read_accel_raw()) {
                 Ok(value) => {
                     sample[0] = value.data.x as f32 * METERS_PER_SECOND_SQUARED_PER_COUNT;
                     sample[1] = value.data.y as f32 * METERS_PER_SECOND_SQUARED_PER_COUNT;
                     sample[2] = value.data.z as f32 * METERS_PER_SECOND_SQUARED_PER_COUNT;
                 }
-                Err(_) => read_ok = false,
+                Err(_) => {
+                    read_ok = false;
+                    imu_read_errors = imu_read_errors.saturating_add(1);
+                }
             }
             timer.delay_ms(SAMPLE_DELAY_MS);
         }
 
         if !read_ok {
-            draw_read_error(&mut frame, imu_address);
+            draw_read_error(&mut frame, imu_read_errors);
             let (x, y, width, height) = READ_ERROR_REGION;
             display
                 .show_region(frame.get_buffer(), x, y, width, height)
@@ -183,14 +265,26 @@ fn main() -> ! {
             let counts: u16 = adc.read(&mut battery_pin).unwrap();
             battery_total += u32::from(counts);
         }
-        let battery = BatteryStatus::from_adc_counts((battery_total / BATTERY_SAMPLES) as u16);
-
         let stats = MotionStats::from_samples(&samples);
         let recent_peak = recent_peaks.push(stats.peak_deviation);
         let now_ms = milliseconds(&timer);
+        let battery = battery_monitor.update((battery_total / BATTERY_SAMPLES) as u16, now_ms);
         let mut full_refresh = false;
         let mode_change = mode_switch.update(stats.mean);
         let screen_direction = mode_switch.screen_direction(stats.mean);
+        let screen_vertical = mode_switch.screen_vertical(stats.mean);
+        let screen_axis = mode_switch.screen_axis();
+        if now_ms.saturating_sub(last_serial_log_ms) >= SERIAL_LOG_INTERVAL_MS {
+            last_serial_log_ms = now_ms;
+            write_orientation_log(
+                &mut serial,
+                &stats,
+                screen_axis,
+                mode_switch.screen_raw_vertical(stats.mean),
+                screen_vertical,
+                screen_direction,
+            );
+        }
         if let Some(new_mode) = mode_change {
             previous_timer_view = None;
             frame.clear(Rgb565::BLACK);
@@ -201,10 +295,10 @@ fn main() -> ! {
             full_refresh = true;
         }
 
-        let state = match mode_change {
-            Some(UiMode::Debug) => shot_timer.reset(now_ms),
-            Some(UiMode::Timer) => shot_timer.reset(now_ms),
-            None => shot_timer.update(now_ms, stats.is_vibrating(VIBRATION_THRESHOLD)),
+        let state = if mode_change.is_some() {
+            shot_timer.reset(now_ms)
+        } else {
+            shot_timer.update(now_ms, stats.is_vibrating(VIBRATION_SENSITIVITY_THRESHOLD))
         };
         if state != previous_state {
             if state.is_sleeping() {
@@ -227,6 +321,9 @@ fn main() -> ! {
                             shot_state: state,
                             now_ms,
                             screen_direction,
+                            screen_vertical,
+                            screen_axis,
+                            imu_read_errors,
                         },
                     );
                     if full_refresh {
@@ -269,8 +366,71 @@ fn show_regions<SPI, DC, CS, RST>(
     }
 }
 
+fn draw_calibrating<D>(display: &mut D, average_raw: [f32; 3], samples: u32)
+where
+    D: DrawTarget<Color = Rgb565>,
+{
+    let style = MonoTextStyle::new(&FONT_10X20, Rgb565::WHITE);
+    for (text, y) in [
+        ("CALIBRATING IMU", 70),
+        ("HOLD SCREEN FACE UP", 95),
+        ("KEEP STILL", 120),
+    ] {
+        Text::with_alignment(text, Point::new(120, y), style, Alignment::Center)
+            .draw(display)
+            .ok();
+    }
+
+    let acceleration = average_raw.map(|value| value * METERS_PER_SECOND_SQUARED_PER_COUNT);
+    let mut line = String::<32>::new();
+    write!(line, "X {:+.2}  Y {:+.2}", acceleration[0], acceleration[1]).ok();
+    Text::with_alignment(&line, Point::new(120, 150), style, Alignment::Center)
+        .draw(display)
+        .ok();
+
+    line.clear();
+    write!(line, "Z {:+.2} m/s2", acceleration[2]).ok();
+    Text::with_alignment(&line, Point::new(120, 175), style, Alignment::Center)
+        .draw(display)
+        .ok();
+
+    line.clear();
+    write!(line, "SAMPLES {samples}/{CALIBRATION_SAMPLES}").ok();
+    Text::with_alignment(&line, Point::new(120, 200), style, Alignment::Center)
+        .draw(display)
+        .ok();
+}
+
 fn milliseconds(timer: &Timer) -> u64 {
     timer.get_counter().ticks() / 1_000
+}
+
+fn write_orientation_log(
+    serial: &mut SerialPort<'_, hal::usb::UsbBus>,
+    stats: &MotionStats,
+    axis: ScreenAxis,
+    raw_vertical: f32,
+    filtered_vertical: f32,
+    direction: shottimer::ui_mode::ScreenDirection,
+) {
+    if !serial.dtr() {
+        return;
+    }
+
+    let mut line = String::<128>::new();
+    writeln!(
+        line,
+        "imu x={:+.2} y={:+.2} z={:+.2}\r",
+        stats.mean[0], stats.mean[1], stats.mean[2]
+    )
+    .ok();
+    writeln!(
+        line,
+        "orient axis={} raw={raw_vertical:+.2} filt={filtered_vertical:+.2} {direction:?}\r",
+        axis.label()
+    )
+    .ok();
+    let _ = serial.write(line.as_bytes());
 }
 
 struct SyncDelay<'a, D>(&'a mut D);

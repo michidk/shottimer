@@ -22,12 +22,21 @@ const TRACK_EDGE: Rgb565 = Rgb565::new(0, 5, 4);
 const ARC_START_DEGREES: f32 = 126.0;
 const ARC_SWEEP_DEGREES: f32 = 288.0;
 
-pub const DYNAMIC_REGIONS: [(u16, u16, u32, u32); 5] = [
+const NUMBER_REGION: (u16, u16, u32, u32) = (58, 78, 124, 86);
+const RING_REGIONS: [(u16, u16, u32, u32); 4] = [
     (10, 10, 220, 40),
     (10, 45, 45, 145),
     (185, 45, 45, 145),
     (40, 185, 160, 45),
-    (42, 69, 156, 104),
+];
+
+/// The numeral is transmitted first and the ring last so arc pixels always win.
+pub const DYNAMIC_REGIONS: [(u16, u16, u32, u32); 5] = [
+    NUMBER_REGION,
+    RING_REGIONS[0],
+    RING_REGIONS[1],
+    RING_REGIONS[2],
+    RING_REGIONS[3],
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -42,6 +51,11 @@ impl TimerView {
                 seconds: shottimer::shot_timer::ShotTimer::displayed_seconds(now_ms, started_ms),
             },
             ShotState::Completed { seconds, .. } => Self { seconds },
+            ShotState::RestartConfirming {
+                retained_seconds, ..
+            } => Self {
+                seconds: retained_seconds,
+            },
             _ => Self { seconds: 0 },
         }
     }
@@ -69,18 +83,17 @@ where
     D: DrawTarget<Color = Rgb565>,
 {
     clear_ring(display);
-    for &(x, y, width, height) in &DYNAMIC_REGIONS[4..] {
-        Rectangle::new(
-            Point::new(i32::from(x), i32::from(y)),
-            Size::new(width, height),
-        )
-        .into_styled(PrimitiveStyle::with_fill(Rgb565::BLACK))
-        .draw(display)
-        .ok();
-    }
+    let (x, y, width, height) = NUMBER_REGION;
+    Rectangle::new(
+        Point::new(i32::from(x), i32::from(y)),
+        Size::new(width, height),
+    )
+    .into_styled(PrimitiveStyle::with_fill(Rgb565::BLACK))
+    .draw(display)
+    .ok();
 
-    draw_progress(display, view.seconds);
     large_text(display, format_args!("{}", view.seconds.min(999)));
+    draw_progress(display, view.seconds);
 }
 
 fn draw_progress<D>(display: &mut D, seconds: u64)
@@ -114,7 +127,7 @@ fn clear_ring<D>(display: &mut D)
 where
     D: DrawTarget<Color = Rgb565>,
 {
-    for &(x, y, width, height) in &DYNAMIC_REGIONS[..4] {
+    for &(x, y, width, height) in &RING_REGIONS {
         Rectangle::new(
             Point::new(i32::from(x), i32::from(y)),
             Size::new(width, height),

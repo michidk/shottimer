@@ -11,41 +11,65 @@ There is no water-level or pump integration.
 - Confirms a possible shot after two seconds of continued vibration.
 - Updates elapsed time in calibrated 975 ms increments.
 - Ends a shot after a timer bucket contains no vibration.
-- Retains the completed value for 60 seconds or until a new shot begins.
+- Discards completed shots shorter than five seconds without showing a result.
+- Retains the completed value for 60 seconds. New vibration must continue for
+  three seconds before replacing it; the new timer then first appears at `3`.
 - Resets an active shot at 99 displayed seconds.
 
 Timer mode shows the elapsed value and a two-lap progress arc. The first brown
 shade fills over 25 seconds; the second shade overlays it during the next 25
 seconds. The arc remains full after 50 seconds while the number continues.
 
-Holding the LCD face-down for at least one second enters Debug mode. The
-orientation signal is low-pass filtered and accepts a roughly 60° face-down
-cone. Returning to any non-down orientation returns to Timer mode. Both mode
-changes reset the shot timer.
+Holding the LCD face-down for at least one second arms a mode change. Turning it
+back face-up then toggles between Timer and Debug modes. Orientation uses
+averaged 100 ms sample windows and accepts a roughly 46° up/down cone. A mode
+change resets the shot timer.
 
-At boot, the display shows solid red, green, and blue for one second each.
+At boot, the display first shows solid red, green, and blue for one second each.
+After the color test, a dedicated IMU calibration screen shows live averaged
+X/Y/Z acceleration and sample progress. Keep the display still and face-up
+during calibration. The strongest gravity axis and its sign become the
+screen-up reference; the other two axes are discarded so a small boot-time tilt
+cannot redefine the screen plane.
+
+The default configuration then starts in Timer mode. Hold the display face-down
+for one second and turn it back up to enter Debug mode.
 
 ## Debug mode
 
 Debug mode shows:
 
-- QMI8658 address;
+- QMI8658 address and cumulative IMU read-error count since boot;
 - mean and standard deviation for X/Y/Z acceleration;
-- `UP`, `DOWN`, `SIDE`, or `TILTED` screen direction;
-- live and rolling peak vibration;
-- timer state;
-- LiPo connection, voltage, and estimated charge percentage;
+- filtered `UP`, `DOWN`, `SIDE`, or `TILTED` screen direction and its numeric
+  score (`+1.00` is face-up and `-1.00` is face-down);
+- vibration detected (`YES`/`NO`), live deviation, threshold, and rolling peak;
+- timer state and remaining confirmation, result-hold, or timeout duration;
+- LiPo connection, voltage, estimated charge percentage, raw ADC value, and
+  filtered voltage trend over time;
 - IMU initialization or read errors.
 
+The firmware also exposes a USB CDC debug serial port. It emits X/Y/Z
+acceleration, the calibrated screen-normal axis, raw and filtered orientation
+scores, and the detected direction twice per second.
+
 Charge percentage is estimated from cell voltage and is less accurate while
-charging or under load. The board has no current-sense circuit, so it cannot
-measure current draw without external hardware.
+charging or under load. The board does not expose the charger's status output
+or contain a current-sense circuit, so firmware cannot reliably report charging
+state or current draw without additional hardware.
+
+The debug display therefore labels the measured trend as `VOLTAGE RISING`,
+`VOLTAGE STABLE`, or `VOLTAGE FALLING`; it does not claim this is the charger's
+authoritative state.
 
 ## Configuration
 
 Calibration values are in [`src/settings.rs`](src/settings.rs), including:
 
-- vibration threshold;
+- vibration sensitivity threshold (higher is less sensitive);
+- initial Debug/Timer mode;
+- minimum retained-shot duration;
+- retained-result restart confirmation duration;
 - shot timeout;
 - completed-result hold duration;
 - progress-lap duration;

@@ -30,6 +30,8 @@ ph-qmi8658 = "0.1.1"
 portable-atomic = { version = "1.15.0", features = ["critical-section"] }
 static_cell = "2.1.1"
 u8g2-fonts = "0.8.0"
+usb-device = "0.3.2"
+usbd-serial = "0.2.2"
 waveshare-rp2040-lcd-1-28 = { git = "https://github.com/rp-rs/rp-hal-boards.git", rev = "5135e3dafe3e69b112e6d2d72cfb1856a7679b82" }
 
 [[bin]]
