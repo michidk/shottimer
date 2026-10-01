@@ -8,4 +8,9 @@ rustflags = ["-C", "link-arg=--nmagic", "-C", "link-arg=-Tlink.x"]
 
 [target.xtensa-esp32s3-none-elf]
 runner = "espflash flash --monitor --chip esp32s3 --flash-size 16mb"
-rustflags = ["-C", "link-arg=-Tlinkall.x"]
+# esp-hal's writable .rotext_dummy alignment section shares a segment with
+# flash code. Keep the upstream layout; suppress this specific ELF warning.
+rustflags = [
+    "-C", "link-arg=-Tlinkall.x",
+    "-C", "link-arg=-Wl,--no-warn-rwx-segments",
+]

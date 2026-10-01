@@ -1,8 +1,8 @@
 //! Orientation-controlled switching between Timer and Debug modes.
 
 use crate::settings::{
-    ORIENTATION_FILTER_ALPHA, SCREEN_DOWN_DEBOUNCE_WINDOWS, SCREEN_RELEASE_DEBOUNCE_WINDOWS,
-    SCREEN_VERTICAL_COS_THRESHOLD,
+    DEBUG_MODE_ENABLED, ORIENTATION_FILTER_ALPHA, SCREEN_DOWN_HOLD_MS,
+    SCREEN_RELEASE_DEBOUNCE_WINDOWS, SCREEN_VERTICAL_COS_THRESHOLD,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -83,7 +83,9 @@ impl OrientationCalibration {
 pub struct FlipModeSwitch {
     mode: UiMode,
     filtered_vertical: Option<f32>,
-    down_windows: u8,
+    debug_enabled: bool,
+    down_since_ms: Option<u64>,
+    last_update_ms: u64,
     release_windows: u8,
     flip_armed: bool,
     screen_normal_axis: ScreenAxis,
@@ -92,10 +94,16 @@ pub struct FlipModeSwitch {
 
 impl FlipModeSwitch {
     pub const fn new(mode: UiMode) -> Self {
+        Self::with_debug_enabled(mode, DEBUG_MODE_ENABLED)
+    }
+
+    pub const fn with_debug_enabled(mode: UiMode, debug_enabled: bool) -> Self {
         Self {
-            mode,
+            mode: if debug_enabled { mode } else { UiMode::Timer },
+            debug_enabled,
             filtered_vertical: None,
-            down_windows: 0,
+            down_since_ms: None,
+            last_update_ms: 0,
             release_windows: 0,
             flip_armed: false,
             screen_normal_axis: ScreenAxis::Z,
@@ -145,8 +153,9 @@ impl FlipModeSwitch {
         }
     }
 
-    /// Uses each averaged 100 ms motion window to return stable mode changes.
-    pub fn update(&mut self, mean: [f32; 3]) -> Option<UiMode> {
+    /// Uses monotonic milliseconds and averaged motion windows for stable changes.
+    pub fn update(&mut self, now_ms: u64, mean: [f32; 3]) -> Option<UiMode> {
+        self.last_update_ms = now_ms;
         let raw_vertical = self.screen_relative_vertical(mean);
         let vertical = match self.filtered_vertical {
             Some(filtered) => filtered + ORIENTATION_FILTER_ALPHA * (raw_vertical - filtered),
@@ -154,19 +163,23 @@ impl FlipModeSwitch {
         };
         self.filtered_vertical = Some(vertical);
 
+        if !self.debug_enabled {
+            return None;
+        }
+
         if vertical <= -SCREEN_VERTICAL_COS_THRESHOLD {
             self.release_windows = 0;
             if !self.flip_armed {
-                self.down_windows = self.down_windows.saturating_add(1);
-                if self.down_windows >= SCREEN_DOWN_DEBOUNCE_WINDOWS {
-                    self.down_windows = 0;
+                let down_since_ms = *self.down_since_ms.get_or_insert(now_ms);
+                if now_ms.saturating_sub(down_since_ms) >= SCREEN_DOWN_HOLD_MS {
+                    self.down_since_ms = None;
                     self.flip_armed = true;
                 }
             }
             return None;
         }
 
-        self.down_windows = 0;
+        self.down_since_ms = None;
         if !self.flip_armed || vertical < SCREEN_VERTICAL_COS_THRESHOLD {
             self.release_windows = 0;
             return None;
@@ -222,14 +235,14 @@ mod tests {
 
     #[test]
     fn screen_up_does_not_change_timer_mode() {
-        let mut switch = FlipModeSwitch::new(UiMode::Timer);
+        let mut switch = FlipModeSwitch::with_debug_enabled(UiMode::Timer, true);
         assert_eq!(repeat(&mut switch, 9.8, 10), None);
         assert_eq!(switch.mode(), UiMode::Timer);
     }
 
     #[test]
     fn held_down_then_up_gesture_toggles_both_modes() {
-        let mut switch = FlipModeSwitch::new(UiMode::Timer);
+        let mut switch = FlipModeSwitch::with_debug_enabled(UiMode::Timer, true);
         repeat(&mut switch, 9.8, 5);
         assert_eq!(repeat(&mut switch, -9.8, 9), None);
         assert_eq!(repeat(&mut switch, -9.8, 20), None);
@@ -242,15 +255,15 @@ mod tests {
 
     #[test]
     fn sideways_does_not_change_modes() {
-        let mut switch = FlipModeSwitch::new(UiMode::Timer);
-        assert_eq!(switch.update(sample(2.0)), None);
-        assert_eq!(switch.update(sample(0.0)), None);
+        let mut switch = FlipModeSwitch::with_debug_enabled(UiMode::Timer, true);
+        assert_eq!(advance(&mut switch, sample(2.0)), None);
+        assert_eq!(advance(&mut switch, sample(0.0)), None);
         assert_eq!(switch.mode(), UiMode::Timer);
     }
 
     #[test]
     fn reports_the_same_screen_direction_used_for_switching() {
-        let switch = FlipModeSwitch::new(UiMode::Timer);
+        let switch = FlipModeSwitch::with_debug_enabled(UiMode::Timer, true);
         assert_eq!(switch.screen_direction(sample(-9.8)), ScreenDirection::Down);
         assert_eq!(
             switch.screen_direction([7.0, 0.0, -7.0]),
@@ -266,41 +279,41 @@ mod tests {
 
     #[test]
     fn transient_orientation_changes_do_not_toggle_or_rearm() {
-        let mut switch = FlipModeSwitch::new(UiMode::Timer);
+        let mut switch = FlipModeSwitch::with_debug_enabled(UiMode::Timer, true);
         repeat(&mut switch, 9.8, 5);
         assert_eq!(repeat(&mut switch, -9.8, 3), None);
-        switch.update(sample(9.8));
+        advance(&mut switch, sample(9.8));
         assert_eq!(switch.mode(), UiMode::Timer);
         assert_eq!(repeat(&mut switch, -9.8, 20), None);
 
         assert_eq!(repeat(&mut switch, 9.8, 2), None);
-        switch.update(sample(-9.8));
+        advance(&mut switch, sample(-9.8));
         assert_eq!(switch.mode(), UiMode::Timer);
         assert_eq!(repeat(&mut switch, 9.8, 20), Some(UiMode::Debug));
     }
 
     #[test]
     fn one_down_window_is_smoothed_and_does_not_bypass_the_debounce() {
-        let mut switch = FlipModeSwitch::new(UiMode::Timer);
+        let mut switch = FlipModeSwitch::with_debug_enabled(UiMode::Timer, true);
         repeat(&mut switch, 9.8, 5);
-        switch.update(sample(-9.8));
+        advance(&mut switch, sample(-9.8));
         assert_ne!(switch.screen_direction(sample(-9.8)), ScreenDirection::Down);
         assert_eq!(switch.mode(), UiMode::Timer);
     }
 
     #[test]
     fn tilted_face_down_orientation_is_detected() {
-        let mut switch = FlipModeSwitch::new(UiMode::Timer);
+        let mut switch = FlipModeSwitch::with_debug_enabled(UiMode::Timer, true);
         let tilted_down = [6.5, 0.0, -7.5];
         for _ in 0..20 {
-            assert_eq!(switch.update(tilted_down), None);
+            assert_eq!(advance(&mut switch, tilted_down), None);
         }
         assert_eq!(repeat(&mut switch, 9.8, 20), Some(UiMode::Debug));
     }
 
     #[test]
     fn debug_startup_waits_for_a_down_then_up_cycle() {
-        let mut switch = FlipModeSwitch::new(UiMode::Debug);
+        let mut switch = FlipModeSwitch::with_debug_enabled(UiMode::Debug, true);
         assert_eq!(repeat(&mut switch, 9.8, 10), None);
         assert_eq!(switch.mode(), UiMode::Debug);
         assert_eq!(repeat(&mut switch, -9.8, 20), None);
@@ -310,13 +323,14 @@ mod tests {
     #[test]
     fn calibration_detects_the_strongest_axis_and_its_sign() {
         let mut switch = FlipModeSwitch::calibrated(UiMode::Timer, [-9.8, 0.2, 0.1]);
+        switch.debug_enabled = true;
         assert_eq!(switch.screen_axis(), ScreenAxis::X);
         assert_eq!(
             switch.screen_direction([-9.8, 0.0, 0.0]),
             ScreenDirection::Up
         );
         for _ in 0..20 {
-            assert_eq!(switch.update([9.8, 0.0, 0.0]), None);
+            assert_eq!(advance(&mut switch, [9.8, 0.0, 0.0]), None);
         }
         assert_eq!(
             repeat_vector(&mut switch, [-9.8, 0.0, 0.0], 20),
@@ -348,6 +362,57 @@ mod tests {
         assert_eq!(calibration.mean(), Some([2.0, 3.0, 4.0]));
     }
 
+    fn advance(switch: &mut FlipModeSwitch, mean: [f32; 3]) -> Option<UiMode> {
+        switch.update(switch.last_update_ms + 100, mean)
+    }
+
+    #[test]
+    fn hold_uses_elapsed_milliseconds_and_waits_for_release() {
+        let mut switch = FlipModeSwitch::with_debug_enabled(UiMode::Timer, true);
+        let down = sample(-9.8);
+        assert_eq!(switch.update(1000, down), None);
+        assert_eq!(switch.update(1000 + SCREEN_DOWN_HOLD_MS - 1, down), None);
+        assert!(!switch.flip_armed);
+        assert_eq!(switch.update(1000 + SCREEN_DOWN_HOLD_MS, down), None);
+        assert!(switch.flip_armed);
+        assert_eq!(switch.mode(), UiMode::Timer);
+        assert_eq!(repeat(&mut switch, 9.8, 20), Some(UiMode::Debug));
+    }
+
+    #[test]
+    fn interrupted_hold_does_not_arm_switching() {
+        let mut switch = FlipModeSwitch::with_debug_enabled(UiMode::Timer, true);
+        switch.update(0, sample(-9.8));
+        switch.update(SCREEN_DOWN_HOLD_MS / 2, sample(-9.8));
+        // Sideways interrupts the filtered face-down hold.
+        switch.update(SCREEN_DOWN_HOLD_MS / 2 + 1, [9.8, 0.0, 0.0]);
+        switch.update(SCREEN_DOWN_HOLD_MS / 2 + 2, [9.8, 0.0, 0.0]);
+        assert!(switch.down_since_ms.is_none());
+        assert!(!switch.flip_armed);
+        assert_eq!(repeat(&mut switch, 9.8, 20), None);
+    }
+
+    #[test]
+    fn disabling_debug_forces_timer_and_ignores_flips() {
+        let mut switch = FlipModeSwitch::with_debug_enabled(UiMode::Debug, false);
+        assert_eq!(switch.mode(), UiMode::Timer);
+        assert_eq!(repeat(&mut switch, -9.8, 40), None);
+        assert_eq!(repeat(&mut switch, 9.8, 40), None);
+        assert_eq!(switch.mode(), UiMode::Timer);
+        assert!(!switch.flip_armed);
+    }
+
+    #[test]
+    fn constructor_obeys_debug_mode_setting() {
+        let switch = FlipModeSwitch::new(UiMode::Debug);
+        let expected = if DEBUG_MODE_ENABLED {
+            UiMode::Debug
+        } else {
+            UiMode::Timer
+        };
+        assert_eq!(switch.mode(), expected);
+    }
+
     fn repeat(switch: &mut FlipModeSwitch, z: f32, count: usize) -> Option<UiMode> {
         repeat_vector(switch, sample(z), count)
     }
@@ -359,7 +424,7 @@ mod tests {
     ) -> Option<UiMode> {
         let mut change = None;
         for _ in 0..count {
-            change = switch.update(sample).or(change);
+            change = advance(switch, sample).or(change);
         }
         change
     }

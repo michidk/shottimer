@@ -13,9 +13,12 @@ There is no water-level or pump integration.
 - `crates/firmware-esp32s3`: ESP32-S3 board backend.
 
 Both boards run the same application through embedded-hal drivers and a small
-`Platform` interface. See [architecture](docs/architecture.md) for boundaries
-and verification. ESP32-S3 builds successfully but has not been hardware-tested;
-touch, Wi-Fi, BLE and PSRAM are not used yet.
+`Platform` interface that separates shared behavior from board-specific hardware.
+Dependencies flow from firmware → app → core; firmware can also use core directly.
+Shared crates must not depend on MCU HALs. `scripts/verify.sh` checks this boundary.
+
+ESP32-S3 builds successfully but has not been hardware-tested; touch, Wi-Fi, BLE
+and PSRAM are not used yet.
 
 ## Behavior
 
@@ -41,12 +44,15 @@ Timer mode shows the elapsed value and a two-lap progress arc. The first brown
 shade fills over 25 seconds; the second shade overlays it during the next 25
 seconds. The arc remains full after 50 seconds while the number continues.
 
-Holding the LCD face-down for at least one second arms a mode change. Turning it
+Holding the LCD face-down for 0.5 seconds (`SCREEN_DOWN_HOLD_MS`) arms a mode change. Turning it
 back face-up then toggles between Timer and Debug modes. Orientation uses
 averaged 100 ms sample windows and accepts a roughly 46° up/down cone. A mode
-change resets the shot timer.
+change resets the shot timer. The hold starts once the filtered direction is down,
+so orientation smoothing adds some response time. Set `DEBUG_MODE_ENABLED = false`
+to disable Debug mode and the gesture entirely.
 
 At boot, the display first shows solid red, green, and blue for one second each.
+Set `COLOR_TEST_ENABLED = false` to skip this test; IMU calibration still runs.
 After the color test, a dedicated IMU calibration screen shows live averaged
 X/Y/Z acceleration and sample progress. Keep the display still and face-up
 during calibration. The strongest gravity axis and its sign become the
@@ -54,7 +60,7 @@ screen-up reference; the other two axes are discarded so a small boot-time tilt
 cannot redefine the screen plane.
 
 The default configuration then starts in Timer mode. Hold the display face-down
-for one second and turn it back up to enter Debug mode.
+for 0.5 seconds and turn it back up to enter Debug mode.
 
 ## Debug mode
 
@@ -66,8 +72,8 @@ Debug mode shows:
   score (`+1.00` is face-up and `-1.00` is face-down);
 - vibration detected (`YES`/`NO`), live deviation, threshold, and rolling peak;
 - timer state and remaining confirmation, result-hold, or timeout duration;
-- LiPo connection, voltage, estimated charge percentage, raw ADC value, and
-  filtered voltage trend over time;
+- battery voltage, estimated charge, ADC value, and voltage trend when
+  `USE_BATTERY = true`;
 - IMU initialization or read errors.
 
 RP2040 exposes a USB CDC debug serial port; ESP32-S3 logs through the onboard
@@ -77,15 +83,6 @@ scores, and the detected direction twice per second.
 Logging can be disabled or its interval changed in the shared settings.
 Disabling logging leaves the board's serial interface available.
 
-Charge percentage is estimated from cell voltage and is less accurate while
-charging or under load. The board does not expose the charger's status output
-or contain a current-sense circuit, so firmware cannot reliably report charging
-state or current draw without additional hardware.
-
-The debug display therefore labels the measured trend as `VOLTAGE RISING`,
-`VOLTAGE STABLE`, or `VOLTAGE FALLING`; it does not claim this is the charger's
-authoritative state.
-
 ## Configuration
 
 Settings are compile-time constants in [`crates/shottimer-core/src/settings.rs`](crates/shottimer-core/src/settings.rs).
@@ -93,10 +90,13 @@ Edit them, rebuild, and flash the firmware to apply changes.
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `START_IN_DEBUG_MODE` | `false` | Start in Timer mode; `true` selects Debug mode after calibration. |
+| `DEBUG_MODE_ENABLED` | `true` | Allow Debug mode and flip switching; false forces Timer mode even if `START_IN_DEBUG_MODE` is true. |
+| `START_IN_DEBUG_MODE` | `false` | Start in Timer mode; `true` selects Debug mode after calibration when enabled. |
+| `COLOR_TEST_ENABLED` | `true` | Run the RGB boot test; false skips it without skipping IMU calibration. |
 | `SHOW_SHOT_HISTORY` | `true` | Show the three previous valid shot times throughout Timer mode; `false` hides the row in every state. |
 | `DISPLAY_ROTATION_DEGREES` | `90` | Clockwise LCD rotation: `0`, `90`, `180`, or `270`. Does not change physical flip detection. |
 | `DISPLAY_BRIGHTNESS_PERCENT` | `100` | Backlight PWM duty, `0`–`100`; sleep turns it off and wake restores this level. |
+| `SLEEP_ENABLED` | `true` | Allow automatic sleep; false keeps the display and normal sampling active. |
 | `SLEEP_TIMEOUT_SECONDS` | `60` | Idle time before sleep. Completed results use their own hold timeout. |
 | `SLEEP_WAKE_THRESHOLD_MG` | `50` | Hardware wake-on-motion acceleration change in mg; separate from the running-shot SD threshold. Higher is less sensitive. |
 | `SLEEP_CHECK_INTERVAL_MS` | `500` | Periodic interrupt-status/recovery and USB service interval while asleep. Motion can wake earlier. |
@@ -104,7 +104,7 @@ Edit them, rebuild, and flash the firmware to apply changes.
 | `CALIBRATION_DURATION_MS` | `3000` | Nominal calibration sampling duration after RGB testing; display updates add overhead. Must be a positive multiple of `SAMPLE_DELAY_MS`. |
 | `USB_LOGGING_ENABLED` | `true` | Enable USB CDC (RP2040) or UART (ESP32-S3) diagnostic logs. |
 | `USB_LOG_INTERVAL_MS` | `500` | Positive interval between diagnostic records; `500` means twice per second. |
-| `USE_BATTERY` | `false` | Enable battery monitoring and UI; false hides all battery information in both modes and the charging ring. |
+| `USE_BATTERY` | `true` | Enable battery monitoring and UI; false hides all battery information in both modes and the charging ring. |
 | `BATTERY_ADC_REFERENCE_VOLTS` | `3.3` | RP2040 ADC reference voltage in volts; ESP32-S3 uses HAL/eFuse calibration. |
 | `BATTERY_VOLTAGE_DIVIDER_RATIO` | `0.5` | RP2040 ADC input/battery ratio; ESP32-S3 uses its own 1/3 divider setting. |
 | `VIBRATION_SENSITIVITY_THRESHOLD` | `1.0` | Largest per-axis standard deviation in m/s² required for vibration; higher is less sensitive. |
@@ -115,7 +115,7 @@ Edit them, rebuild, and flash the firmware to apply changes.
 | `PROGRESS_LAP_SECONDS` | `25` | Displayed seconds per ring lap; progress stops after two laps. |
 | `SCREEN_VERTICAL_COS_THRESHOLD` | `0.7` | Face-up/down cosine threshold, approximately a 46° cone. Higher narrows the cone. |
 | `ORIENTATION_FILTER_ALPHA` | `0.2` | New-reading weight in the orientation filter; lower smooths more and responds slower. |
-| `SCREEN_DOWN_DEBOUNCE_WINDOWS` | `10` | Consecutive face-down windows required to arm switching. |
+| `SCREEN_DOWN_HOLD_MS` | `500` | Continuous filtered face-down hold in milliseconds before switching is armed. Turn face-up afterward to switch. |
 | `SCREEN_RELEASE_DEBOUNCE_WINDOWS` | `3` | Consecutive face-up windows required to complete switching. |
 | `SAMPLE_DELAY_MS` | `10` | Delay between acceleration samples; ten samples form a motion window. |
 | `RECENT_PEAK_WINDOWS` | `32` | Number of windows retained by the rolling peak diagnostic. |
@@ -127,10 +127,13 @@ running machine's SD readings.
 
 ### Low-power sleep
 
+Set `SLEEP_ENABLED = false` to disable automatic sleep. Completed results still
+expire after their configured hold duration, returning to the idle Timer screen.
+
 Sleep turns off the backlight and puts the LCD controller into sleep mode.
 The accelerometer switches from 1000 Hz to its 128 Hz low-power wake-on-motion
-mode; rendering and regular diagnostic logs pause. Battery voltage is checked
-at the low-rate recovery interval to notice charging from a power-only USB source.
+mode; rendering and regular diagnostic logs pause. When battery support is
+enabled, voltage is checked at the low-rate recovery interval.
 IMU INT2 wakes the MCU, with a timer-based status/recovery check every 500 ms.
 RP2040 uses event-based CPU sleep, not dormant mode; clocks and RAM remain
 available. ESP32-S3 uses HAL-managed light sleep. Neither resets history.
@@ -138,38 +141,22 @@ available. ESP32-S3 uses HAL-managed light sleep. Neither resets history.
 Movement wakes the screen, but does not itself start a shot: normal sampling
 and the existing vibration confirmation rules resume after waking. The flip
 gesture is evaluated only after waking; sleeping movement does not toggle modes.
+Battery voltage and charging estimates never prevent sleep or wake the board;
+the battery is not sampled while asleep. Direct USB host detection still prevents sleep.
 On RP2040, a serial terminal with DTR asserted keeps normal acquisition running for
 debugging (and wakes a sleeping board), so disconnect it for battery testing.
 Actual current savings and wake sensitivity still require testing on the board.
 
 ### Charge indicator
 
-Set `USE_BATTERY = true` when fitting a battery. With the default `false`,
-battery monitoring is disabled, both modes hide all battery information,
-and Timer mode hides the charging ring. USB host detection remains active on
-RP2040 and still prevents sleep while a host is connected.
-This setting is not hot-plug detection: USB can power the charger rail even
-without a battery. Changing the flag requires rebuilding and flashing.
+With `USE_BATTERY = true`, Timer mode shows a green inner ring and `N%`
+when voltage is rising or, on RP2040, a USB host is connected. This battery
+indicator does not affect sleep.
 
-Timer mode shows a smaller green inner progress ring and `N%` when the battery
-voltage trend is rising, or on RP2040 when a USB host is enumerated. Sleep is
-disabled in either case. ESP32-S3's CH343 bridge cannot report USB host state
-to firmware, so that board relies solely on the voltage-trend heuristic.
-The inner ring uses the same 288° arc and rounded ends as the shot ring;
-100% fills the arc. The percentage label is at the bottom center.
-Shot detection and the 60-second completed-result retention are unchanged.
-The percentage is estimated from voltage, not measured by a fuel gauge.
+Charge is estimated from voltage. Charging state and battery removal cannot be
+reliably detected, and current draw is not measured.
 
-The charger STAT signal and a physical USB VBUS sense signal are not available
-to firmware on these boards. Therefore USB host enumeration does not prove that
-the battery is charging; power-only chargers rely on the 30-second voltage
-trend heuristic, which can also mistake voltage recovery for charging. A
-stable/full battery on a power-only charger cannot be reliably distinguished
-from an unplugged battery, so the indicator may disappear and sleep may resume.
-
-Wake-on-motion configuration follows the [QMI8658C datasheet](https://files.waveshare.com/wiki/common/QMI8658C_datasheet_rev_0.9.pdf),
-using the existing IMU driver. LCD sleep commands use the existing display
-transport without replacing or vendoring the display driver.
+### Ring colors
 
 Ring colors use `(red, green, blue)` RGB565 tuples: red/blue `0`–`31`, green
 `0`–`63`. Invalid channel values fail at build time. The darker edge shades

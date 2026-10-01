@@ -6,7 +6,7 @@ use embedded_graphics::{
     mono_font::{MonoTextStyle, MonoTextStyleBuilder, ascii::FONT_6X10},
     pixelcolor::Rgb565,
     prelude::*,
-    primitives::{Circle, PrimitiveStyle, Rectangle},
+    primitives::{PrimitiveStyle, Rectangle},
     text::{Alignment, Text},
 };
 use heapless::String;
@@ -46,10 +46,6 @@ pub fn draw_frame<D>(display: &mut D)
 where
     D: DrawTarget<Color = Rgb565>,
 {
-    Circle::new(Point::new(13, 13), 214)
-        .into_styled(PrimitiveStyle::with_stroke(Rgb565::new(0, 20, 22), 2))
-        .draw(display)
-        .ok();
     draw_text(
         display,
         "SHOTTIMER / DEBUG",

@@ -49,10 +49,12 @@ pub fn run<P: Platform>(mut board: P) -> ! {
             }
         }
     };
-    for color in [Rgb565::RED, Rgb565::GREEN, Rgb565::BLUE] {
-        frame.clear(color);
-        board.show(frame.get_buffer(), None).unwrap();
-        board.delay_ms(1_000);
+    if COLOR_TEST_ENABLED {
+        for color in [Rgb565::RED, Rgb565::GREEN, Rgb565::BLUE] {
+            frame.clear(color);
+            board.show(frame.get_buffer(), None).unwrap();
+            board.delay_ms(1_000);
+        }
     }
 
     let mut imu_read_errors = 0u32;
@@ -81,7 +83,7 @@ pub fn run<P: Platform>(mut board: P) -> ! {
     let screen_up_mean = calibration.mean().unwrap_or([0.0, 0.0, 1.0]);
 
     frame.clear(Rgb565::BLACK);
-    let initial_mode = if START_IN_DEBUG_MODE {
+    let initial_mode = if DEBUG_MODE_ENABLED && START_IN_DEBUG_MODE {
         UiMode::Debug
     } else {
         UiMode::Timer
@@ -106,12 +108,8 @@ pub fn run<P: Platform>(mut board: P) -> ! {
         if low_power {
             // No LCD writes or normal sample windows asleep.
             board.poll();
-            // Keep a low-rate voltage check to notice power-only charging even
-            // when USB cannot enumerate. The charger has no MCU status signal.
-            let reading = read_battery(&mut board);
-            let sleeping_battery =
-                battery_monitor.update_voltage(reading.raw_counts, reading.voltage, board.now_ms());
-            let powered = board.externally_powered() || sleeping_battery.charging_indicated();
+            // Battery measurements never prevent sleep or wake the board.
+            let powered = board.externally_powered();
             let motion = board.motion_pending().unwrap_or_else(|_| {
                 imu_read_errors = imu_read_errors.saturating_add(1);
                 true
@@ -164,14 +162,14 @@ pub fn run<P: Platform>(mut board: P) -> ! {
         let recent_peak = recent_peaks.push(stats.peak_deviation);
         let now_ms = board.now_ms();
         let battery = battery_monitor.update_voltage(reading.raw_counts, reading.voltage, now_ms);
-        let powered = board.externally_powered() || battery.charging_indicated();
-        let charge_percent = if powered && battery.connected {
+        let powered = board.externally_powered();
+        let charge_percent = if (powered || battery.charging_indicated()) && battery.connected {
             Some(battery.charge_percent)
         } else {
             None
         };
         let mut full_refresh = false;
-        let mode_change = mode_switch.update(stats.mean);
+        let mode_change = mode_switch.update(now_ms, stats.mean);
         let screen_direction = mode_switch.screen_direction(stats.mean);
         let screen_vertical = mode_switch.screen_vertical(stats.mean);
         let screen_axis = mode_switch.screen_axis();
@@ -202,7 +200,7 @@ pub fn run<P: Platform>(mut board: P) -> ! {
             shot_timer.update_with_sleep_policy(
                 now_ms,
                 stats.is_vibrating(VIBRATION_SENSITIVITY_THRESHOLD),
-                !powered,
+                SLEEP_ENABLED && !powered,
             )
         };
         if state != previous_state
@@ -391,15 +389,21 @@ mod tests {
             Ok([vibration, 0, z])
         }
         fn read_battery(&mut self) -> Result<BatteryReading, HardwareError> {
-            self.trace.borrow_mut().battery_reads += 1;
+            let mut trace = self.trace.borrow_mut();
+            assert_eq!(
+                trace.sleeps, trace.wakes,
+                "battery must not be sampled asleep"
+            );
+            trace.battery_reads += 1;
             Ok(BatteryReading {
                 raw_counts: 2400,
-                voltage: 3.85,
+                // Sustained rising voltage must not block idle sleep or wake it.
+                voltage: 3.85 + self.now as f32 * 0.000_000_1,
             })
         }
         fn show(&mut self, buf: &[u8], regions: Option<&[Region]>) -> Result<(), HardwareError> {
             let mut trace = self.trace.borrow_mut();
-            if regions.is_none() && trace.colors.len() < 3 {
+            if COLOR_TEST_ENABLED && regions.is_none() && trace.colors.len() < 3 {
                 let pixel = u16::from_be_bytes([buf[0], buf[1]]);
                 assert!(
                     buf.as_chunks::<2>()
@@ -456,12 +460,16 @@ mod tests {
         let reason = result.unwrap_err();
         assert_eq!(reason.downcast_ref::<&str>(), Some(&"simulation complete"));
         let trace = trace.borrow();
-        assert_eq!(trace.colors, [0xf800, 0x07e0, 0x001f]);
+        if COLOR_TEST_ENABLED {
+            assert_eq!(trace.colors, [0xf800, 0x07e0, 0x001f]);
+        } else {
+            assert!(trace.colors.is_empty());
+        }
         assert!(trace.reads >= 300);
         assert_eq!(trace.battery_reads > 0, USE_BATTERY);
         assert!(trace.logs > 100);
-        assert_eq!(trace.sleeps, 1);
-        assert_eq!(trace.wakes, 1);
-        assert!(trace.waits > 0);
+        assert_eq!(trace.sleeps, usize::from(SLEEP_ENABLED));
+        assert_eq!(trace.wakes, usize::from(SLEEP_ENABLED));
+        assert_eq!(trace.waits > 0, SLEEP_ENABLED);
     }
 }

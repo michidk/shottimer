@@ -109,7 +109,7 @@ impl ShotTimer {
         self.update_with_sleep_policy(now_ms, vibrating, true)
     }
 
-    /// Disable sleep while externally powered/charging without losing shot state.
+    /// Apply the configured sleep/power policy without losing shot state.
     pub fn update_with_sleep_policy(
         &mut self,
         now_ms: u64,
@@ -287,7 +287,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn external_power_prevents_sleep_without_extending_result_retention() {
+    fn disabled_sleep_policy_prevents_sleep_without_extending_result_retention() {
         let mut timer = ShotTimer::new(0);
         assert_eq!(
             timer.update_with_sleep_policy(60_000, false, false),

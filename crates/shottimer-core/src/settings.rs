@@ -6,6 +6,13 @@ pub const SAMPLE_DELAY_MS: u32 = 10;
 /// Selects the UI shown after the RGB display test.
 pub const START_IN_DEBUG_MODE: bool = false;
 
+/// Allow Debug mode at startup and through the face-down/face-up gesture.
+pub const DEBUG_MODE_ENABLED: bool = true;
+
+/// Show red, green, and blue for one second each before IMU calibration.
+/// False skips only the display test, not calibration.
+pub const COLOR_TEST_ENABLED: bool = true;
+
 /// Show up to three previous completed shot times throughout Timer mode.
 pub const SHOW_SHOT_HISTORY: bool = true;
 
@@ -14,6 +21,9 @@ pub const DISPLAY_ROTATION_DEGREES: u16 = 90;
 
 /// Backlight PWM duty cycle, from 0 (off) to 100 (full brightness).
 pub const DISPLAY_BRIGHTNESS_PERCENT: u8 = 100;
+
+/// Allow automatic display/IMU/MCU sleep. False keeps normal sampling and UI active.
+pub const SLEEP_ENABLED: bool = true;
 
 /// Idle duration before the display backlight is turned off.
 pub const SLEEP_TIMEOUT_SECONDS: u64 = 60;
@@ -36,7 +46,7 @@ pub const USB_LOG_INTERVAL_MS: u64 = 500;
 
 /// Enable battery monitoring, charge estimates, and battery UI.
 /// The charger can power the measured rail over USB without a battery.
-pub const USE_BATTERY: bool = false;
+pub const USE_BATTERY: bool = true;
 
 /// Battery ADC reference voltage and ADC-input/battery divider ratio.
 pub const BATTERY_ADC_REFERENCE_VOLTS: f32 = 3.3;
@@ -51,6 +61,7 @@ const _: () = {
     assert!(SLEEP_TIMEOUT_SECONDS > 0 && START_CONFIRM_SECONDS > 0);
     assert!(SLEEP_WAKE_THRESHOLD_MG > 0 && SLEEP_CHECK_INTERVAL_MS > 0);
     assert!(USB_LOG_INTERVAL_MS > 0);
+    assert!(SCREEN_DOWN_HOLD_MS > 0);
     assert!(BATTERY_ADC_REFERENCE_VOLTS > 0.0);
     assert!(BATTERY_VOLTAGE_DIVIDER_RATIO > 0.0 && BATTERY_VOLTAGE_DIVIDER_RATIO <= 1.0);
 };
@@ -66,8 +77,8 @@ pub const SCREEN_VERTICAL_COS_THRESHOLD: f32 = 0.7;
 /// Weight of each new 100 ms orientation reading in the low-pass filter.
 pub const ORIENTATION_FILTER_ALPHA: f32 = 0.2;
 
-/// Consecutive averaged 100 ms face-down windows required to arm a mode change.
-pub const SCREEN_DOWN_DEBOUNCE_WINDOWS: u8 = 10;
+/// Continuous filtered face-down hold required to arm switching, in milliseconds.
+pub const SCREEN_DOWN_HOLD_MS: u64 = 500;
 
 /// Consecutive averaged 100 ms face-up windows required to complete a mode change.
 pub const SCREEN_RELEASE_DEBOUNCE_WINDOWS: u8 = 3;
