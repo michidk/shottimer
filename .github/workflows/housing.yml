@@ -1,0 +1,97 @@
+name: Housing CAD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'housing/**'
+      - '.github/workflows/housing.yml'
+  pull_request:
+    paths:
+      - 'housing/**'
+      - '.github/workflows/housing.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Serialize rolling uploads so two builds cannot mix release assets.
+concurrency:
+  group: housing-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: housing
+    env:
+      PYOPENGL_PLATFORM: egl
+      LIBGL_ALWAYS_SOFTWARE: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          version: '0.12.5'
+          enable-cache: true
+          cache-dependency-glob: |
+            housing/requirements.txt
+            housing/overrides.txt
+      - name: Install rendering libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1 libgl1-mesa-dri libglu1-mesa fonts-dejavu-core
+      - name: Install CAD dependencies
+        run: |
+          uv venv --python 3.12 .venv
+          uv pip install --python .venv/bin/python -r requirements.txt --override overrides.txt
+      - name: Check assembly and insertion paths
+        run: .venv/bin/python usb_centered_stand.py
+      - name: Check USB access and export printable files
+        run: .venv/bin/python finish_usb_centered.py
+      - name: Package housing downloads
+        run: .venv/bin/python package_release.py
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: housing-${{ github.sha }}
+          path: housing/dist/*
+          if-no-files-found: error
+          retention-days: 90
+
+  publish:
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: housing-${{ github.sha }}
+          path: dist
+      - name: Update rolling housing prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SOURCE_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag=housing-latest
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" dist/* --clobber
+            gh api --method PATCH "repos/$GH_REPO/git/refs/tags/$tag" \
+              -f sha="$SOURCE_SHA" -F force=true >/dev/null
+            gh release edit "$tag" --title 'Housing: latest successful main build' \
+              --notes-file dist/release-notes.md --prerelease --latest=false
+          else
+            gh release create "$tag" dist/* --target "$SOURCE_SHA" \
+              --title 'Housing: latest successful main build' \
+              --notes-file dist/release-notes.md --prerelease --latest=false
+          fi

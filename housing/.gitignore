@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+
+# Preserve old experiments locally; publish only the current printable outputs.
+output/*
+!output/usb-centered/
+reference/RP2040-LCD-1.28-corrected-local.step

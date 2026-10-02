@@ -1,0 +1,4 @@
+# CAD interchange/reference files are opaque assets, not line-oriented code.
+*.step binary
+*.stl binary
+*.pdf binary

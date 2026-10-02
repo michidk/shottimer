@@ -1,0 +1,2 @@
+# pyrender pins an old PyOpenGL release that fails with the current NumPy runtime.
+PyOpenGL==3.1.10
