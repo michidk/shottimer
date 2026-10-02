@@ -55,7 +55,7 @@ jobs:
         run: .venv/bin/python finish_usb_centered.py
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: housing-${{ github.sha }}
+          name: housing
           path: |
             housing/output/usb-centered/body.stl
             housing/output/usb-centered/cover_print.stl

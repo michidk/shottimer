@@ -28,18 +28,22 @@ clearance to the metal shell at both front and rear edges.
 
 ## Automated builds and downloads
 
-[Open successful housing builds on main](https://github.com/michidk/shottimer/actions/workflows/housing.yml?query=branch%3Amain+is%3Asuccess),
-choose the newest run, and download `housing-<commit SHA>` under **Artifacts**.
-GitHub supplies a ZIP containing only the two STL files and the STEP assembly.
-Downloading Actions artifacts through GitHub requires sign-in; artifacts are
-retained for 90 days. For a specific commit, select its workflow run instead.
+[Download latest housing artifact](https://nightly.link/michidk/shottimer/workflows/housing.yml/main/housing.zip)
+via [nightly.link](https://github.com/oprypin/nightly.link), which resolves the
+`housing` artifact from the latest successful `main` workflow run without requiring
+GitHub sign-in. The ZIP contains only `body.stl`, `cover_print.stl` and `assembly.step`.
+
+[GitHub build history](https://github.com/michidk/shottimer/actions/workflows/housing.yml?query=branch%3Amain+is%3Asuccess) is the fallback:
+open a successful run and download `housing` under **Artifacts** (GitHub sign-in
+required). Artifacts are retained for 90 days. For a specific commit, select
+its workflow run; the stable artifact name is reused across separate runs.
 
 The [Housing CAD workflow](../.github/workflows/housing.yml) builds housing changes
 on `main` and pull requests, and supports manual runs. It checks the full assembly,
 sampled insertion paths and USB access before uploading the three files.
 There is no release-publishing job and the workflow has read-only repository
-permissions. GitHub has no native stable URL for the latest artifact, so the
-README points to successful workflow runs instead.
+permissions. The direct latest-download link uses the third-party nightly.link
+service; the actual files remain GitHub Actions artifacts.
 
 Generated `output/` and `dist/` files are ignored by Git. CAD source, the original
 board reference and README images are versioned. Fit reports and renders are
