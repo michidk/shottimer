@@ -9,8 +9,8 @@ use embedded_hal::{delay::DelayNs, digital::OutputPin, spi::SpiBus};
 use embedded_hal_async::i2c::I2c;
 use gc9a01a_driver::{GC9A01A, Orientation};
 use ph_qmi8658::{
-    AccelConfig, AccelOutputDataRate, AccelRange, Config, I2cConfig, InterruptPin, Qmi8658Address,
-    Qmi8658I2c, WomConfig, WomInterruptLevel,
+    AccelConfig, AccelOutputDataRate, AccelRange, Config, I2cConfig, InterruptConfig, InterruptPin,
+    Qmi8658Address, Qmi8658I2c, WomConfig, WomInterruptLevel,
 };
 use shottimer_core::settings::{DISPLAY_ROTATION_DEGREES, SLEEP_WAKE_THRESHOLD_MG};
 
@@ -28,14 +28,25 @@ impl<I: I2c> Imu<I> {
         }
     }
     pub fn initialize<D: DelayNs>(&mut self, delay: &mut D) -> Result<u8, HardwareError> {
-        block_on(self.inner.init_with_addresses(
+        let address = block_on(self.inner.init_with_addresses(
             &mut SyncDelay(delay),
             &[
                 Qmi8658Address::Primary.addr(),
                 Qmi8658Address::Secondary.addr(),
             ],
         ))
-        .map_err(|_| HardwareError::Imu)
+        .map_err(|_| HardwareError::Imu)?;
+        // Route CTRL9 completion to STATUSINT bit 7. The driver handles the
+        // completion/ACK handshake without reading STATUS1 motion latches.
+        block_on(
+            self.inner.apply_interrupt_config(
+                InterruptConfig::new()
+                    .with_ctrl9_handshake_statusint(true)
+                    .with_motion_pin(InterruptPin::Int2),
+            ),
+        )
+        .map_err(|_| HardwareError::Imu)?;
+        Ok(address)
     }
     pub fn read_raw(&mut self) -> Result<[i16; 3], HardwareError> {
         block_on(self.inner.read_accel_raw())
@@ -51,23 +62,32 @@ impl<I: I2c> Imu<I> {
                 ))
                 .without_gyro(),
         );
-        block_on(self.inner.apply_config()).map_err(|_| HardwareError::Imu)?;
+        // enable_wom applies the low-power configuration with sensors disabled,
+        // then enables acceleration only after the command has completed.
         let wom = WomConfig::new(SLEEP_WAKE_THRESHOLD_MG)
             .with_blanking_samples(4)
             .with_interrupt(InterruptPin::Int2, WomInterruptLevel::Low);
-        block_on(self.inner.enable_wom(&mut SyncDelay(delay), wom)).map_err(|_| HardwareError::Imu)
+        block_on(self.inner.enable_wom(&mut SyncDelay(delay), wom)).map_err(command_error)
     }
     pub fn exit_sleep<D: DelayNs>(&mut self, delay: &mut D) -> Result<(), HardwareError> {
-        block_on(self.inner.disable_wom(&mut SyncDelay(delay))).map_err(|_| HardwareError::Imu)?;
+        let disable_result = block_on(self.inner.disable_wom(&mut SyncDelay(delay)));
+        // Restore normal sampling even if disabling WoM times out during recovery.
         self.inner.set_config(active_config());
         block_on(self.inner.apply_config()).map_err(|_| HardwareError::Imu)?;
         delay.delay_ms(20);
-        Ok(())
+        disable_result.map_err(command_error)
     }
     pub fn motion_pending(&mut self) -> Result<bool, HardwareError> {
         block_on(self.inner.read_interrupt_status())
             .map(|s| s.wake_on_motion)
             .map_err(|_| HardwareError::Imu)
+    }
+}
+
+fn command_error(error: ph_qmi8658::Error) -> HardwareError {
+    match error {
+        ph_qmi8658::Error::NotReady => HardwareError::ImuCommandTimeout,
+        _ => HardwareError::Imu,
     }
 }
 
@@ -149,5 +169,137 @@ impl<'a, S: SpiBus<u8>, D: OutputPin, C: OutputPin, R: OutputPin> Display<'a, S,
     fn command(&mut self, command: u8) -> Result<(), HardwareError> {
         display_bus::command(self.spi, self.dc, self.cs, command)
             .map_err(|_| HardwareError::Display)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    extern crate std;
+
+    use super::*;
+    use embedded_hal_async::i2c::Operation;
+    use std::{cell::RefCell, rc::Rc, vec::Vec};
+
+    struct Sensor {
+        registers: [u8; 128],
+        writes: Vec<(u8, u8)>,
+        command_pending: bool,
+        acknowledge: bool,
+    }
+
+    impl Sensor {
+        fn new() -> Self {
+            let mut registers = [0; 128];
+            registers[0] = 5;
+            Self {
+                registers,
+                writes: Vec::new(),
+                command_pending: false,
+                acknowledge: true,
+            }
+        }
+    }
+
+    struct Bus(Rc<RefCell<Sensor>>);
+    impl embedded_hal::i2c::ErrorType for Bus {
+        type Error = embedded_hal::i2c::ErrorKind;
+    }
+
+    impl I2c for Bus {
+        async fn transaction(
+            &mut self,
+            _: u8,
+            operations: &mut [Operation<'_>],
+        ) -> Result<(), Self::Error> {
+            let mut sensor = self.0.borrow_mut();
+            let mut register = 0;
+            for operation in operations {
+                match operation {
+                    Operation::Write(bytes) => {
+                        register = bytes[0];
+                        for &value in &bytes[1..] {
+                            sensor.registers[register as usize] = value;
+                            sensor.writes.push((register, value));
+                            if register == 0x0a && value == 8 {
+                                sensor.command_pending = true;
+                            }
+                            if register == 0x0a && value == 0 {
+                                sensor.command_pending = false;
+                            }
+                            register += 1;
+                        }
+                    }
+                    Operation::Read(bytes) => {
+                        for value in bytes.iter_mut() {
+                            // Commands must use STATUSINT directly, not STATUS1
+                            // (which also clears motion/interrupt latches).
+                            assert!(!(sensor.command_pending && register == 0x2f));
+                            *value =
+                                if register == 0x2d && sensor.command_pending && sensor.acknowledge
+                                {
+                                    assert_eq!(sensor.registers[0x09] & 0x80, 0x80);
+                                    0x80
+                                } else {
+                                    sensor.registers[register as usize]
+                                };
+                            register += 1;
+                        }
+                    }
+                }
+            }
+            Ok(())
+        }
+    }
+
+    struct Delay;
+    impl DelayNs for Delay {
+        fn delay_ns(&mut self, _: u32) {}
+    }
+
+    #[test]
+    fn repeated_sleep_wake_uses_statusint_handshake_and_correct_sensor_order() {
+        let sensor = Rc::new(RefCell::new(Sensor::new()));
+        let mut imu = Imu::new(Bus(sensor.clone()));
+        let mut delay = Delay;
+        imu.initialize(&mut delay).unwrap();
+        assert_eq!(sensor.borrow().registers[0x09], 0x80);
+        for _ in 0..3 {
+            let start = sensor.borrow().writes.len();
+            imu.enter_sleep(&mut delay).unwrap();
+            {
+                let state = sensor.borrow();
+                let writes = &state.writes[start..];
+                assert_eq!(writes[0], (0x08, 0));
+                assert_eq!(writes.last(), Some(&(0x08, 1)));
+                assert!(writes.contains(&(0x0a, 8)));
+                assert_eq!(state.registers[0x03] & 0x0f, 0x0c);
+                assert_eq!(state.registers[0x0b], SLEEP_WAKE_THRESHOLD_MG);
+                assert_eq!(state.registers[0x0c], 0x44);
+                assert!(!state.command_pending);
+            }
+            imu.exit_sleep(&mut delay).unwrap();
+            assert_eq!(sensor.borrow().registers[0x03] & 0x0f, 3);
+            assert_eq!(sensor.borrow().registers[0x08], 1);
+        }
+    }
+
+    #[test]
+    fn command_timeout_is_reported_and_recovery_restores_active_sampling() {
+        let sensor = Rc::new(RefCell::new(Sensor::new()));
+        let mut imu = Imu::new(Bus(sensor.clone()));
+        let mut delay = Delay;
+        imu.initialize(&mut delay).unwrap();
+        sensor.borrow_mut().acknowledge = false;
+        assert_eq!(
+            imu.enter_sleep(&mut delay),
+            Err(HardwareError::ImuCommandTimeout)
+        );
+        assert_eq!(sensor.borrow().registers[0x08], 0);
+        assert_eq!(
+            imu.exit_sleep(&mut delay),
+            Err(HardwareError::ImuCommandTimeout)
+        );
+        assert_eq!(sensor.borrow().registers[0x03] & 0x0f, 3);
+        assert_eq!(sensor.borrow().registers[0x08], 1);
     }
 }

@@ -66,12 +66,13 @@ for 0.5 seconds and turn it back up to enter Debug mode.
 
 Debug mode shows:
 
-- QMI8658 address and cumulative IMU read-error count since boot;
+- QMI8658 address and cumulative IMU error count since boot (reads, commands, and recovery);
 - mean and standard deviation for X/Y/Z acceleration;
 - filtered `UP`, `DOWN`, `SIDE`, or `TILTED` screen direction and its numeric
   score (`+1.00` is face-up and `-1.00` is face-down);
 - vibration detected (`YES`/`NO`), live deviation, threshold, and rolling peak;
-- timer state and remaining confirmation, result-hold, or timeout duration;
+- idle seconds since last activity (`IDLE 42s / 60s`), or timer state and
+  remaining confirmation, result-hold, or timeout duration;
 - battery voltage, estimated charge, ADC value, and voltage trend when
   `USE_BATTERY = true`;
 - IMU initialization or read errors.
@@ -103,11 +104,14 @@ Edit them, rebuild, and flash the firmware to apply changes.
 | `START_CONFIRM_SECONDS` | `2` | Initial-shot vibration confirmation delay. |
 | `CALIBRATION_DURATION_MS` | `3000` | Nominal calibration sampling duration after RGB testing; display updates add overhead. Must be a positive multiple of `SAMPLE_DELAY_MS`. |
 | `USB_LOGGING_ENABLED` | `true` | Enable USB CDC (RP2040) or UART (ESP32-S3) diagnostic logs. |
+| `SLEEP_DIAGNOSTICS_ENABLED` | `true` | Log sleep decisions, IRQ/motion wake sources, and failures; does not change sleep policy. |
+| `ALLOW_SLEEP_WITH_SERIAL_CONNECTED` | `true` | Allow real sleep with a serial terminal attached, overriding USB sleep blocking. Disable to restore the normal USB/debugger policy; independent of logging. |
 | `USB_LOG_INTERVAL_MS` | `500` | Positive interval between diagnostic records; `500` means twice per second. |
 | `USE_BATTERY` | `true` | Enable battery monitoring and UI; false hides all battery information in both modes and the charging ring. |
 | `BATTERY_ADC_REFERENCE_VOLTS` | `3.3` | RP2040 ADC reference voltage in volts; ESP32-S3 uses HAL/eFuse calibration. |
 | `BATTERY_VOLTAGE_DIVIDER_RATIO` | `0.5` | RP2040 ADC input/battery ratio; ESP32-S3 uses its own 1/3 divider setting. |
 | `VIBRATION_SENSITIVITY_THRESHOLD` | `1.0` | Largest per-axis standard deviation in m/s² required for vibration; higher is less sensitive. |
+| `VIBRATION_SD_DEADBAND` | `0.05` | Per-axis SD at or below this noise floor is displayed and treated as zero; `0` disables. Higher values remain unchanged. |
 | `MINIMUM_SHOT_SECONDS` | `5` | Discard shorter completed shots. |
 | `RESTART_CONFIRM_SECONDS` | `3` | Continuous vibration required to replace a retained result. |
 | `SHOT_TIMEOUT_SECONDS` | `99` | Active-shot limit in displayed seconds (975 ms increments). |
@@ -132,8 +136,7 @@ expire after their configured hold duration, returning to the idle Timer screen.
 
 Sleep turns off the backlight and puts the LCD controller into sleep mode.
 The accelerometer switches from 1000 Hz to its 128 Hz low-power wake-on-motion
-mode; rendering and regular diagnostic logs pause. When battery support is
-enabled, voltage is checked at the low-rate recovery interval.
+mode; rendering, battery sampling, and regular diagnostic logs pause.
 IMU INT2 wakes the MCU, with a timer-based status/recovery check every 500 ms.
 RP2040 uses event-based CPU sleep, not dormant mode; clocks and RAM remain
 available. ESP32-S3 uses HAL-managed light sleep. Neither resets history.
@@ -142,9 +145,15 @@ Movement wakes the screen, but does not itself start a shot: normal sampling
 and the existing vibration confirmation rules resume after waking. The flip
 gesture is evaluated only after waking; sleeping movement does not toggle modes.
 Battery voltage and charging estimates never prevent sleep or wake the board;
-the battery is not sampled while asleep. Direct USB host detection still prevents sleep.
-On RP2040, a serial terminal with DTR asserted keeps normal acquisition running for
-debugging (and wakes a sleeping board), so disconnect it for battery testing.
+the battery is not sampled while asleep. Direct USB host detection normally prevents sleep.
+With `ALLOW_SLEEP_WITH_SERIAL_CONNECTED = true`, an attached RP2040 serial terminal
+allows real sleep even over USB and does not itself wake the board. Disable this
+flag to restore the normal USB/debugger policy. Independently,
+`SLEEP_DIAGNOSTICS_ENABLED` enables logs showing
+`status`, `enter`, `entered`, periodic `check`, `wake`, `awake`, and any errors,
+including IRQ level, IMU motion flag, USB/serial wake causes, SD, and idle time.
+Logging and USB servicing add overhead, so serial-connected testing is not
+appropriate for measuring power savings.
 Actual current savings and wake sensitivity still require testing on the board.
 
 ### Charge indicator

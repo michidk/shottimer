@@ -44,6 +44,14 @@ pub const CALIBRATION_DURATION_MS: u32 = 3_000;
 pub const USB_LOGGING_ENABLED: bool = true;
 pub const USB_LOG_INTERVAL_MS: u64 = 500;
 
+/// Log sleep decisions, wake sources, and failures. Does not change sleep policy.
+pub const SLEEP_DIAGNOSTICS_ENABLED: bool = true;
+
+/// Allow sleep with a serial terminal connected, overriding USB sleep blocking.
+/// The terminal does not itself wake the board. Independent of logging settings.
+/// Disable after testing to restore the normal USB/debugger sleep policy.
+pub const ALLOW_SLEEP_WITH_SERIAL_CONNECTED: bool = true;
+
 /// Enable battery monitoring, charge estimates, and battery UI.
 /// The charger can power the measured rail over USB without a battery.
 pub const USE_BATTERY: bool = true;
@@ -62,6 +70,7 @@ const _: () = {
     assert!(SLEEP_WAKE_THRESHOLD_MG > 0 && SLEEP_CHECK_INTERVAL_MS > 0);
     assert!(USB_LOG_INTERVAL_MS > 0);
     assert!(SCREEN_DOWN_HOLD_MS > 0);
+    assert!(VIBRATION_SD_DEADBAND >= 0.0 && VIBRATION_SD_DEADBAND < f32::INFINITY);
     assert!(BATTERY_ADC_REFERENCE_VOLTS > 0.0);
     assert!(BATTERY_VOLTAGE_DIVIDER_RATIO > 0.0 && BATTERY_VOLTAGE_DIVIDER_RATIO <= 1.0);
 };
@@ -69,6 +78,10 @@ const _: () = {
 /// Peak per-axis standard deviation that counts as vibration, in m/s².
 /// Increase this value to reduce sensitivity; decrease it to detect weaker vibration.
 pub const VIBRATION_SENSITIVITY_THRESHOLD: f32 = 1.0;
+
+/// Per-axis SD at or below this noise floor is treated and displayed as zero.
+/// Set to zero to disable; larger SD values are not reduced.
+pub const VIBRATION_SD_DEADBAND: f32 = 0.05;
 
 /// Minimum normalized calibrated-axis component accepted as screen-up/down.
 /// 0.7 accepts orientations within roughly 46° of directly face-up/down.

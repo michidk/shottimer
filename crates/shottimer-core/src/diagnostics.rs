@@ -1,5 +1,7 @@
 //! Small, platform-independent vibration statistics used by the debug screen.
 
+use crate::settings::VIBRATION_SD_DEADBAND;
+
 /// Number of accelerometer readings in one diagnostic window.
 pub const SAMPLE_COUNT: usize = 10;
 
@@ -40,7 +42,7 @@ impl<const N: usize> Default for PeakWindow<N> {
 }
 
 impl MotionStats {
-    /// Calculates population standard deviation independently for all axes.
+    /// Calculates per-axis population SD and suppresses the configured noise floor.
     pub fn from_samples(samples: &[[f32; 3]; SAMPLE_COUNT]) -> Self {
         let mut mean = [0.0; 3];
         for sample in samples {
@@ -62,6 +64,12 @@ impl MotionStats {
         for value in &mut deviation {
             *value = libm::sqrtf(*value / SAMPLE_COUNT as f32);
         }
+
+        Self::with_deadband(mean, deviation, VIBRATION_SD_DEADBAND)
+    }
+
+    fn with_deadband(mean: [f32; 3], deviation: [f32; 3], deadband: f32) -> Self {
+        let deviation = deviation.map(|value| if value <= deadband { 0.0 } else { value });
 
         let peak_deviation = deviation[0].max(deviation[1]).max(deviation[2]);
         Self {
@@ -125,5 +133,23 @@ mod tests {
         assert_eq!(peaks.push(1.0), 2.0);
         assert_eq!(peaks.push(0.5), 2.0);
         assert_eq!(peaks.push(0.25), 1.0);
+    }
+
+    #[test]
+    fn deadband_suppresses_noise_without_changing_larger_values_or_mean() {
+        let mean = [1.0, 2.0, 9.81];
+        let stats = MotionStats::with_deadband(mean, [0.02, 0.05, 1.2], 0.05);
+        assert_eq!(stats.mean, mean);
+        assert_eq!(stats.deviation, [0.0, 0.0, 1.2]);
+        assert_eq!(stats.peak_deviation, 1.2);
+        assert!(stats.is_vibrating(1.0));
+        let quiet = MotionStats::with_deadband(mean, [0.02; 3], 0.05);
+        assert!(!quiet.is_vibrating(0.01));
+    }
+
+    #[test]
+    fn zero_deadband_preserves_nonzero_sd() {
+        let stats = MotionStats::with_deadband([0.0; 3], [0.0, 0.02, 1.2], 0.0);
+        assert_eq!(stats.deviation, [0.0, 0.02, 1.2]);
     }
 }

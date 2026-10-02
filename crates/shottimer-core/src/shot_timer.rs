@@ -99,6 +99,10 @@ impl ShotTimer {
         ]
     }
 
+    pub fn idle_ms(&self, now_ms: u64) -> u64 {
+        now_ms.saturating_sub(self.last_activity_ms)
+    }
+
     pub fn reset(&mut self, now_ms: u64) -> ShotState {
         self.last_activity_ms = now_ms;
         self.state = ShotState::Ready;
@@ -285,6 +289,17 @@ impl ShotTimer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn idle_elapsed_tracks_vibration_and_explicit_resets() {
+        let mut timer = ShotTimer::new(1000);
+        assert_eq!(timer.idle_ms(43_000), 42_000);
+        timer.update(43_000, true);
+        assert_eq!(timer.idle_ms(43_500), 500);
+        timer.reset(44_000);
+        assert_eq!(timer.idle_ms(44_000), 0);
+        assert_eq!(timer.idle_ms(43_999), 0);
+    }
 
     #[test]
     fn disabled_sleep_policy_prevents_sleep_without_extending_result_retention() {

@@ -11,8 +11,16 @@ pub struct BatteryReading {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct WakeStatus {
+    /// Raw pin level for diagnostics, not a confirmed motion event.
+    pub interrupt_high: bool,
+    pub motion_detected: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HardwareError {
     Imu,
+    ImuCommandTimeout,
     Display,
     Battery,
     Sleep,
@@ -37,7 +45,8 @@ pub trait Platform {
     /// Backend decides whether a receiver is connected; UART may log blindly.
     fn log(&mut self, bytes: &[u8]);
     fn enter_sleep(&mut self) -> Result<(), HardwareError>;
-    fn motion_pending(&mut self) -> Result<bool, HardwareError>;
+    /// Read both the physical IRQ level and the latched IMU motion status.
+    fn wake_status(&mut self) -> Result<WakeStatus, HardwareError>;
     /// Wait for motion or a bounded recovery deadline without busy polling.
     fn wait_for_wake(&mut self);
     fn exit_sleep(&mut self) -> Result<(), HardwareError>;

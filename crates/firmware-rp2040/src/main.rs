@@ -13,7 +13,7 @@ use embedded_hal_02::adc::OneShot;
 use embedded_hal_async::i2c::I2c;
 use panic_halt as _;
 use shottimer_app::{
-    BatteryReading, HardwareError, Platform, Region,
+    BatteryReading, HardwareError, Platform, Region, WakeStatus,
     drivers::{Display, Imu},
 };
 use shottimer_core::settings::{DISPLAY_BRIGHTNESS_PERCENT, SLEEP_CHECK_INTERVAL_MS};
@@ -254,11 +254,20 @@ where
         self.usb.state() == UsbDeviceState::Configured
     }
     fn logging_connected(&self) -> bool {
-        self.serial.dtr()
+        self.externally_powered() && self.serial.dtr()
     }
     fn log(&mut self, b: &[u8]) {
-        if self.serial.dtr() {
-            self.serial.write(b).ok();
+        if self.logging_connected() {
+            let deadline_ms = self.now_ms() + 20;
+            let mut remaining = b;
+            while !remaining.is_empty() && self.now_ms() < deadline_ms {
+                self.poll();
+                match self.serial.write(remaining) {
+                    Ok(n) => remaining = &remaining[n..],
+                    Err(usb_device::UsbError::WouldBlock) => {}
+                    Err(_) => break,
+                }
+            }
         }
     }
     fn enter_sleep(&mut self) -> Result<(), HardwareError> {
@@ -267,12 +276,13 @@ where
         (self.wake)(WakeOperation::Enable);
         Ok(())
     }
-    fn motion_pending(&mut self) -> Result<bool, HardwareError> {
-        if (self.wake)(WakeOperation::Pending) {
-            Ok(true)
-        } else {
-            self.imu.motion_pending()
-        }
+    fn wake_status(&mut self) -> Result<WakeStatus, HardwareError> {
+        let interrupt_high = (self.wake)(WakeOperation::Pending);
+        let motion_detected = self.imu.motion_pending()?;
+        Ok(WakeStatus {
+            interrupt_high,
+            motion_detected,
+        })
     }
     fn wait_for_wake(&mut self) {
         (self.wake)(WakeOperation::Wait);

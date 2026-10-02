@@ -9,4 +9,4 @@ mod platform;
 mod timer_ui;
 
 pub use engine::run;
-pub use platform::{BatteryReading, HardwareError, Platform, Region};
+pub use platform::{BatteryReading, HardwareError, Platform, Region, WakeStatus};

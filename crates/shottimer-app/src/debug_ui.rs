@@ -13,7 +13,7 @@ use heapless::String;
 use shottimer_core::{
     battery::{BatteryStatus, VoltageTrend},
     diagnostics::MotionStats,
-    settings::{USE_BATTERY, VIBRATION_SENSITIVITY_THRESHOLD},
+    settings::{SLEEP_TIMEOUT_SECONDS, USE_BATTERY, VIBRATION_SENSITIVITY_THRESHOLD},
     shot_timer::{ShotState, ShotTimer},
     ui_mode::{ScreenAxis, ScreenDirection},
 };
@@ -36,10 +36,11 @@ pub struct DebugStatus {
     pub battery: BatteryStatus,
     pub shot_state: ShotState,
     pub now_ms: u64,
+    pub idle_ms: u64,
     pub screen_direction: ScreenDirection,
     pub screen_vertical: f32,
     pub screen_axis: ScreenAxis,
-    pub imu_read_errors: u32,
+    pub imu_errors: u32,
 }
 
 pub fn draw_frame<D>(display: &mut D)
@@ -73,7 +74,7 @@ pub fn draw_values<D>(
     write!(
         line,
         "QMI {address:02X} ERR:{} PEAK:{recent_peak:.1}",
-        status.imu_read_errors
+        status.imu_errors
     )
     .ok();
     draw_text(display, &line, 120, 51, dim, Alignment::Center);
@@ -138,7 +139,7 @@ pub fn draw_values<D>(
     );
 
     clear_region(display, 30, 159, 180, 16);
-    let (mode, color) = status_line(&mut line, status.shot_state, status.now_ms);
+    let (mode, color) = status_line(&mut line, status.shot_state, status.now_ms, status.idle_ms);
     draw_text(
         display,
         mode,
@@ -245,11 +246,19 @@ where
     );
 }
 
-fn status_line(line: &mut String<64>, state: ShotState, now_ms: u64) -> (&str, Rgb565) {
+fn status_line(
+    line: &mut String<64>,
+    state: ShotState,
+    now_ms: u64,
+    idle_ms: u64,
+) -> (&str, Rgb565) {
     line.clear();
     let remaining = state.countdown_ms(now_ms).unwrap_or(0).div_ceil(100);
     match state {
-        ShotState::Ready => ("         READY         ", Rgb565::GREEN),
+        ShotState::Ready => {
+            write!(line, "IDLE {}s / {SLEEP_TIMEOUT_SECONDS}s", idle_ms / 1000).ok();
+            (line.as_str(), Rgb565::GREEN)
+        }
         ShotState::Confirming { .. } => {
             write!(line, "START IN {}.{}s", remaining / 10, remaining % 10).ok();
             (line.as_str(), Rgb565::YELLOW)
@@ -323,4 +332,19 @@ fn draw_text<D>(
     Text::with_alignment(value, Point::new(x, y), style, alignment)
         .draw(display)
         .ok();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ready_displays_idle_seconds_and_configured_sleep_timeout() {
+        let mut line = String::new();
+        let (text, color) = status_line(&mut line, ShotState::Ready, 50_000, 42_999);
+        let mut expected = String::<64>::new();
+        write!(expected, "IDLE 42s / {SLEEP_TIMEOUT_SECONDS}s").unwrap();
+        assert_eq!(text, expected.as_str());
+        assert_eq!(color, Rgb565::GREEN);
+    }
 }

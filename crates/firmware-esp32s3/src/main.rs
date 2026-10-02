@@ -23,7 +23,7 @@ use esp_hal::{
 };
 use panic_halt as _;
 use shottimer_app::{
-    BatteryReading, HardwareError, Platform, Region,
+    BatteryReading, HardwareError, Platform, Region, WakeStatus,
     drivers::{Display, Imu},
 };
 use shottimer_core::settings::{DISPLAY_BRIGHTNESS_PERCENT, SLEEP_CHECK_INTERVAL_MS};
@@ -180,12 +180,13 @@ impl<B: FnMut() -> Result<BatteryReading, HardwareError>> Platform for Board<'_,
         self.irq.listen(Event::HighLevel);
         Ok(())
     }
-    fn motion_pending(&mut self) -> Result<bool, HardwareError> {
-        if self.irq.is_high() {
-            Ok(true)
-        } else {
-            self.imu.motion_pending()
-        }
+    fn wake_status(&mut self) -> Result<WakeStatus, HardwareError> {
+        let interrupt_high = self.irq.is_high();
+        let motion_detected = self.imu.motion_pending()?;
+        Ok(WakeStatus {
+            interrupt_high,
+            motion_detected,
+        })
     }
     fn wait_for_wake(&mut self) {
         self.low_power.set_wakeup_deadline(

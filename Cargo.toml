@@ -20,7 +20,7 @@ embedded-graphics = "0.8.1"
 gc9a01a_driver = "1.0.0"
 heapless = "0.9.1"
 libm = "0.2.15"
-ph-qmi8658 = "0.1.1"
+ph-qmi8658 = { git = "https://github.com/michidk/ph-qmi8658-imu.git", rev = "b91ba41c28a8c3f6d44277567b8ab74b4c583191" }
 static_cell = "2.1.1"
 u8g2-fonts = "0.8.0"
 

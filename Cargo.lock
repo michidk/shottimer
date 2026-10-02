@@ -1314,8 +1314,7 @@ checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 [[package]]
 name = "ph-qmi8658"
 version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf68aefd179891a096992d2707c2c72a3608e433b1a4faced939f6d7f4254942"
+source = "git+https://github.com/michidk/ph-qmi8658-imu.git?rev=b91ba41c28a8c3f6d44277567b8ab74b4c583191#b91ba41c28a8c3f6d44277567b8ab74b4c583191"
 dependencies = [
  "embedded-hal-async",
 ]
