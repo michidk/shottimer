@@ -104,7 +104,11 @@ impl OrientationCalibration {
             },
         )?;
         let magnitude = libm::sqrtf(mean.iter().map(|value| value * value).sum());
-        if (magnitude - STANDARD_GRAVITY).abs() > STANDARD_GRAVITY * CALIBRATION_GRAVITY_TOLERANCE {
+        // A NaN magnitude would pass the tolerance comparison below.
+        if !magnitude.is_finite()
+            || (magnitude - STANDARD_GRAVITY).abs()
+                > STANDARD_GRAVITY * CALIBRATION_GRAVITY_TOLERANCE
+        {
             return Err(CalibrationError::NotGravity { magnitude });
         }
         Ok(mean)
@@ -419,6 +423,12 @@ mod tests {
             zeros.validate(1),
             Err(CalibrationError::NotGravity { magnitude: 0.0 })
         );
+        let mut corrupt = OrientationCalibration::new();
+        corrupt.add([f32::NAN, 0.0, 9.8]);
+        assert!(matches!(
+            corrupt.validate(1),
+            Err(CalibrationError::NotGravity { .. })
+        ));
         let mut saturated = OrientationCalibration::new();
         saturated.add([78.0, 78.0, 78.0]);
         assert!(matches!(

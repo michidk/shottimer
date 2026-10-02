@@ -261,6 +261,8 @@ impl<'a, P: Platform> App<'a, P> {
             draw_read_error(&mut self.screen.frame, self.imu_errors);
             self.screen
                 .present(&mut self.board, Some(&[READ_ERROR_REGION]));
+            // The banner overlays the timer view, so redraw it once reads recover.
+            self.screen.shown_timer_view = None;
             return;
         };
         let snapshot = self.observe(&samples);
@@ -403,7 +405,9 @@ impl<'a, P: Platform> App<'a, P> {
             Err(error) => {
                 self.record_sleep_error("exit", error);
                 self.power = Power::Restoring;
-                self.board.delay_ms(100);
+                // Retry after a low-power wait rather than a busy delay, so a
+                // dead peripheral does not keep the MCU awake and drain the battery.
+                self.board.wait_for_wake();
             }
         }
     }
@@ -1133,6 +1137,22 @@ mod tests {
     }
 
     #[test]
+    fn timer_view_is_redrawn_after_a_read_error_banner() {
+        let trace = Rc::new(RefCell::new(Trace::default()));
+        let board = FakeBoard::booted(20_000, trace.clone());
+        let mut pixels = vec![0; LCD_BUFFER_BYTES];
+        let screen = Screen::new(FrameBuffer::new(&mut pixels, LCD_SIZE, LCD_SIZE));
+        let mut app = App::new(board, screen, 0x6b, 0, calibrated_switch());
+        app.cycle();
+        assert!(app.screen.shown_timer_view.is_some());
+        app.board.reads_fail_until_ms = app.board.now + 50;
+        app.cycle();
+        app.cycle();
+        // Initial view, error banner, then the unchanged view over the banner.
+        assert_eq!(trace.borrow().shows, [None, Some(1), Some(1)]);
+    }
+
+    #[test]
     fn failed_wake_keeps_restoring_without_another_motion_event() {
         let trace = Rc::new(RefCell::new(Trace::default()));
         let mut board = FakeBoard::booted(20_000, trace.clone());
@@ -1155,7 +1175,8 @@ mod tests {
         assert_eq!(app.imu_errors, 2);
         let trace = trace.borrow();
         assert_eq!(trace.exit_attempts.len(), 3);
-        assert_eq!(trace.waits, 0);
+        // Each failed attempt waits in low power before retrying.
+        assert_eq!(trace.waits, 2);
         assert_eq!(trace.shows, [None]);
         assert!(trace.backlight);
     }

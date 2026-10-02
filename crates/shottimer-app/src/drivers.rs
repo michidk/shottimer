@@ -177,7 +177,8 @@ impl<'a, S: SpiBus<u8>, D: OutputPin, C: OutputPin, R: OutputPin> Display<'a, S,
 }
 
 /// Shared `Platform::exit_sleep` sequence: both peripherals are restored even
-/// if one fails, so an IMU error cannot leave the LCD asleep.
+/// if one fails, so an IMU error cannot leave the LCD asleep. A panel that
+/// rejects the wake commands is hardware-reset and reinitialized instead.
 pub fn restore_after_sleep<I, S, D, C, R, T>(
     imu: &mut Imu<I>,
     display: &mut Display<'_, S, D, C, R>,
@@ -192,7 +193,7 @@ where
     T: DelayNs,
 {
     let imu_result = imu.exit_sleep(delay);
-    let display_result = display.wake(delay);
+    let display_result = display.wake(delay).or_else(|_| display.initialize(delay));
     let cleanup = imu_result?;
     display_result?;
     Ok(cleanup)
@@ -340,6 +341,8 @@ mod tests {
         commands: Vec<u8>,
         command_mode: bool,
         fail: bool,
+        /// Number of upcoming writes that fail before the bus recovers.
+        fail_writes: usize,
     }
     struct PanelBus(Rc<RefCell<Panel>>);
     struct PanelDc(Rc<RefCell<Panel>>);
@@ -353,7 +356,8 @@ mod tests {
         }
         fn write(&mut self, bytes: &[u8]) -> Result<(), Self::Error> {
             let mut panel = self.0.borrow_mut();
-            if panel.fail {
+            if panel.fail || panel.fail_writes > 0 {
+                panel.fail_writes = panel.fail_writes.saturating_sub(1);
                 return Err(embedded_hal::spi::ErrorKind::Other);
             }
             if panel.command_mode {
@@ -446,10 +450,22 @@ mod tests {
         assert_eq!(panel.borrow().commands, [0x11, 0x29]);
         sensor.borrow_mut().offline = false;
 
+        // A panel that rejects the wake commands is reset and reinitialized.
+        panel.borrow_mut().commands.clear();
+        panel.borrow_mut().fail_writes = 1;
+        sensor.borrow_mut().acknowledge = true;
+        assert_eq!(
+            restore_after_sleep(&mut imu, &mut display, &mut delay),
+            Ok(None)
+        );
+        let commands = panel.borrow().commands.clone();
+        // Initialization ends with sleep-out and display-on before orientation.
+        assert!(commands.len() > 2, "initialization sequence was not sent");
+        assert!(commands.windows(2).any(|pair| pair == [0x11, 0x29]));
+
         // An LCD failure is reported even though the IMU was restored first.
         panel.borrow_mut().commands.clear();
         panel.borrow_mut().fail = true;
-        sensor.borrow_mut().acknowledge = true;
         assert_eq!(
             restore_after_sleep(&mut imu, &mut display, &mut delay),
             Err(HardwareError::Display)
