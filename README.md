@@ -21,7 +21,7 @@ Two printable, screw-free housings are available for the RP2040-LCD-1.28 board a
 MakerFocus 2000 mAh battery. See the [housing project](housing/README.md) for
 STLs, dimensions, assembly instructions and the parametric CAD build.
 [Download latest housing artifact](https://nightly.link/michidk/shottimer/workflows/housing.yml/main/housing.zip)
-(desktop stand and magnetic housing; two STLs and one STEP each, via nightly.link) · [GitHub build history](https://github.com/michidk/shottimer/actions/workflows/housing.yml?query=branch%3Amain+is%3Asuccess)
+(desktop stand and magnetic housing; two STLs and one STEP each, via nightly.link)
 
 ![Desktop stand and magnetic housing](.github/images/housing-overview.png)
 
