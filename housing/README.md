@@ -13,10 +13,10 @@ Use **`usb_centered_stand.py`** and **`output/usb-centered/`**.
 Earlier scripts and output folders are retained as design history; they are
 superseded. [DESIGN.txt](DESIGN.txt) records the iterations.
 
-- [Front housing STL](output/usb-centered/body.stl) — integrated bezel and floor.
-- [Rear cover STL](output/usb-centered/cover_print.stl) — already oriented for printing.
-- [Assembly STEP](output/usb-centered/assembly.step) — housing, cover, board and battery.
-- [Fit report](output/usb-centered/fit-check.json).
+- [Front housing STL](https://github.com/michidk/shottimer/releases/download/housing-latest/body.stl) — integrated bezel and floor.
+- [Rear cover STL](https://github.com/michidk/shottimer/releases/download/housing-latest/cover_print.stl) — already oriented for printing.
+- [Assembly STEP](https://github.com/michidk/shottimer/releases/download/housing-latest/assembly.step) — housing, cover, board and battery.
+- [Fit report](https://github.com/michidk/shottimer/releases/download/housing-latest/fit-check.json).
 
 The latest change moves the USB opening **2.88048 mm toward the display** and
 rounds its corners to **R0.8 mm**, retaining its **12 × 7 mm** overall size.
@@ -24,6 +24,26 @@ It is centered on the corrected CAD connector, with approximately **1.42 mm**
 clearance to the metal shell at both front and rear edges.
 
 ![Housing from six directions](../.github/images/housing-views.png)
+
+## Automated builds and downloads
+
+[Download the latest housing ZIP](https://github.com/michidk/shottimer/releases/download/housing-latest/housing.zip)
+from the [rolling housing prerelease](https://github.com/michidk/shottimer/releases/tag/housing-latest).
+The first successful CI build makes these download links available.
+
+The [Housing CAD workflow](../.github/workflows/housing.yml) builds housing changes
+on `main` and pull requests, and supports manual runs. It checks the full assembly,
+sampled insertion paths and USB access, then exports STL/STEP files, previews,
+fit reports, source commit information and SHA-256 checksums. Per-run
+`housing-<commit SHA>` Actions artifacts are retained for 90 days.
+
+Successful `main` builds update the `housing-latest` prerelease and tag. Pull
+requests never publish releases. Rolling downloads are mutable; keep the ZIP
+and `build-info.json` to record exactly which model you printed.
+
+Generated `output/` and `dist/` files are ignored by Git. CAD source, the original
+board reference and README images are versioned. Run `render_docs.py` explicitly
+to refresh documentation images; CI does not commit generated images.
 
 ## Dimensions and construction
 
