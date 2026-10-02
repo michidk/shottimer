@@ -1,0 +1,83 @@
+name: Firmware
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - '.cargo/**'
+      - '.github/workflows/firmware.yml'
+  pull_request:
+    paths:
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - '.cargo/**'
+      - '.github/workflows/firmware.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firmware-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  host-and-rp2040:
+    name: Host tests and RP2040 build
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Install toolchain from rust-toolchain.toml
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Run host tests
+        run: cargo test --locked
+      - name: Lint host crates
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Keep board dependencies out of the shared application
+        run: |
+          if cargo tree --locked -p shottimer-app --prefix none --edges normal \
+            | grep -Eq '^(esp-hal|rp2040-hal|cortex-m|waveshare-rp2040|firmware-)'; then
+            echo "::error::Board dependency leaked into shottimer-app."
+            exit 1
+          fi
+      - name: Lint RP2040 firmware
+        run: cargo clippy --locked -p firmware-rp2040 --target thumbv6m-none-eabi -- -D warnings
+      - name: Build RP2040 firmware
+        run: cargo rp2040 --locked
+
+  esp32s3:
+    name: ESP32-S3 build
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: esp-rs/xtensa-toolchain@ec6d36527049a7f4fb2cb0c1a644668c1bb8a2a4 # v1.7.0
+        with:
+          buildtargets: esp32s3
+          version: '1.97.0.0'
+          default: false
+          override: false
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Lint ESP32-S3 firmware
+        run: >-
+          cargo +esp clippy --locked -p firmware-esp32s3
+          --target xtensa-esp32s3-none-elf -Zbuild-std=core -- -D warnings
+      - name: Build ESP32-S3 firmware
+        run: cargo +esp esp32s3 --locked

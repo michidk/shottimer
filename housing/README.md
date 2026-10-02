@@ -122,8 +122,16 @@ plus clearance, so check the actual pack before inserting it.
 
 ## Rebuild and render
 
-Run from this directory with Python 3.12. On Linux the renderer also needs an
-EGL/OpenGL runtime and DejaVu fonts.
+Run from this directory with Python 3.12 and [uv](https://docs.astral.sh/uv/getting-started/installation/).
+On Linux the renderer also needs an EGL/OpenGL runtime and DejaVu fonts; on
+Ubuntu (as in CI), install them with:
+
+```sh
+sudo apt-get install -y libegl1 libgl1 libgl1-mesa-dri libglu1-mesa fonts-dejavu-core
+```
+
+Without a display, render headlessly as CI does with `PYOPENGL_PLATFORM=egl`
+and, without a GPU, `LIBGL_ALWAYS_SOFTWARE=1`.
 
 ```sh
 cd housing                         # from the repository root

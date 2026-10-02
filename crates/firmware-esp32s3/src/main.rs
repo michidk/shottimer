@@ -24,7 +24,7 @@ use esp_hal::{
 use panic_halt as _;
 use shottimer_app::{
     BatteryReading, HardwareError, Platform, Region, WakeStatus,
-    drivers::{Display, Imu},
+    drivers::{self, Display, Imu},
 };
 use shottimer_core::settings::{DISPLAY_BRIGHTNESS_PERCENT, SLEEP_CHECK_INTERVAL_MS};
 esp_bootloader_esp_idf::esp_app_desc!();
@@ -49,7 +49,7 @@ fn main() -> ! {
         i2c_port,
         uart_port,
     ) = hardware::select_hardware!(p);
-    let mut delay = Delay::new();
+    let delay = Delay::new();
     let spi = RefCell::new(
         Spi::new(
             spi_port,
@@ -62,7 +62,8 @@ fn main() -> ! {
     let dc = RefCell::new(Output::new(dc, Level::Low, OutputConfig::default()));
     let cs = RefCell::new(Output::new(cs, Level::High, OutputConfig::default()));
     let reset = Output::new(rst, Level::High, OutputConfig::default());
-    let display = Display::new(&spi, &dc, &cs, reset, &mut delay).unwrap();
+    // The shared runtime initializes the panel and retries on failure.
+    let display = Display::new(&spi, &dc, &cs, reset);
     let _touch_reset = Output::new(touch_rst, Level::High, OutputConfig::default());
     let i2c = I2c::new(
         i2c_port,
@@ -140,6 +141,9 @@ impl<B: FnMut() -> Result<BatteryReading, HardwareError>> Platform for Board<'_,
     fn delay_ms(&mut self, ms: u32) {
         self.delay.delay_ms(ms);
     }
+    fn initialize_display(&mut self) -> Result<(), HardwareError> {
+        self.display.initialize(&mut self.delay)
+    }
     fn initialize_imu(&mut self) -> Result<u8, HardwareError> {
         self.imu.initialize(&mut self.delay)
     }
@@ -195,10 +199,9 @@ impl<B: FnMut() -> Result<BatteryReading, HardwareError>> Platform for Board<'_,
         self.low_power.sleep_light(RtcSleepConfig::default());
         self.low_power.clear_wakeup_deadline();
     }
-    fn exit_sleep(&mut self) -> Result<(), HardwareError> {
+    fn exit_sleep(&mut self) -> Result<Option<HardwareError>, HardwareError> {
         self.irq.unlisten();
         self.irq.clear_interrupt();
-        self.imu.exit_sleep(&mut self.delay)?;
-        self.display.wake(&mut self.delay)
+        drivers::restore_after_sleep(&mut self.imu, &mut self.display, &mut self.delay)
     }
 }
