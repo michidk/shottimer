@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     defaults:
       run:
@@ -31,12 +31,12 @@ jobs:
       PYOPENGL_PLATFORM: egl
       LIBGL_ALWAYS_SOFTWARE: '1'
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
-          version: '0.12.5'
+          version: '0.12.22'
           enable-cache: true
           cache-dependency-glob: |
             housing/requirements.txt
@@ -51,7 +51,7 @@ jobs:
           uv pip install --python .venv/bin/python -r requirements.txt --override overrides.txt
       - name: Validate assembly, insertion paths and USB access; export printable files
         run: .venv/bin/python build.py stand
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: housing
           path: |
