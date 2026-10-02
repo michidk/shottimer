@@ -30,6 +30,9 @@ pub trait Platform {
     /// Monotonic uptime in milliseconds, including light-sleep intervals.
     fn now_ms(&self) -> u64;
     fn delay_ms(&mut self, ms: u32);
+    /// Reset and configure the LCD controller. Called at boot and again after
+    /// repeated transfer failures, so it must be safe to repeat.
+    fn initialize_display(&mut self) -> Result<(), HardwareError>;
     fn initialize_imu(&mut self) -> Result<u8, HardwareError>;
     /// Signed QMI8658 counts in ±8 g mode, not register bytes.
     fn read_accel_raw(&mut self) -> Result<[i16; 3], HardwareError>;
@@ -49,5 +52,9 @@ pub trait Platform {
     fn wake_status(&mut self) -> Result<WakeStatus, HardwareError>;
     /// Wait for motion or a bounded recovery deadline without busy polling.
     fn wait_for_wake(&mut self);
-    fn exit_sleep(&mut self) -> Result<(), HardwareError>;
+    /// Disable wake sources, restore active IMU sampling, and wake the LCD,
+    /// attempting every step even if an earlier one fails. `Err` means the IMU
+    /// or LCD may still be asleep; `Ok(Some(_))` reports a cleanup failure,
+    /// such as a wake-on-motion disable timeout, after both were restored.
+    fn exit_sleep(&mut self) -> Result<Option<HardwareError>, HardwareError>;
 }

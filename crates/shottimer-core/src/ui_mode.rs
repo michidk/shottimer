@@ -46,6 +46,21 @@ impl ScreenAxis {
     }
 }
 
+/// Standard gravity in m/s², the expected magnitude of a still calibration.
+pub const STANDARD_GRAVITY: f32 = 9.806_65;
+/// Accepted relative deviation of the calibration mean from one gravity.
+const CALIBRATION_GRAVITY_TOLERANCE: f32 = 0.2;
+
+/// Why a boot calibration window cannot define the screen-up axis.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum CalibrationError {
+    /// Too many IMU reads failed during the window.
+    TooFewSamples { samples: u32, required: u32 },
+    /// The mean acceleration (m/s²) is not close to one gravity.
+    NotGravity { magnitude: f32 },
+}
+
+/// Accumulates screen-up acceleration samples, in m/s².
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct OrientationCalibration {
     total: [f32; 3],
@@ -77,6 +92,22 @@ impl OrientationCalibration {
         }
         let divisor = self.samples as f32;
         Some(self.total.map(|total| total / divisor))
+    }
+
+    /// Returns the mean only if at least `required` reads succeeded and it
+    /// looks like gravity, so a failed or disturbed window is never trusted.
+    pub fn validate(self, required: u32) -> Result<[f32; 3], CalibrationError> {
+        let mean = self.mean().filter(|_| self.samples >= required).ok_or(
+            CalibrationError::TooFewSamples {
+                samples: self.samples,
+                required,
+            },
+        )?;
+        let magnitude = libm::sqrtf(mean.iter().map(|value| value * value).sum());
+        if (magnitude - STANDARD_GRAVITY).abs() > STANDARD_GRAVITY * CALIBRATION_GRAVITY_TOLERANCE {
+            return Err(CalibrationError::NotGravity { magnitude });
+        }
+        Ok(mean)
     }
 }
 
@@ -360,6 +391,40 @@ mod tests {
         calibration.add([3.0, 4.0, 5.0]);
         assert_eq!(calibration.sample_count(), 2);
         assert_eq!(calibration.mean(), Some([2.0, 3.0, 4.0]));
+    }
+
+    #[test]
+    fn calibration_requires_enough_samples_near_one_gravity() {
+        let mut calibration = OrientationCalibration::new();
+        assert_eq!(
+            calibration.validate(2),
+            Err(CalibrationError::TooFewSamples {
+                samples: 0,
+                required: 2
+            })
+        );
+        calibration.add([0.5, 0.0, 9.7]);
+        assert!(matches!(
+            calibration.validate(2),
+            Err(CalibrationError::TooFewSamples { samples: 1, .. })
+        ));
+        calibration.add([-0.5, 0.0, 9.9]);
+        let mean = calibration.validate(2).unwrap();
+        assert!(mean[0].abs() < 1e-6 && (mean[2] - 9.8).abs() < 1e-5);
+
+        // Zeroed or saturated reads must not pick an arbitrary screen axis.
+        let mut zeros = OrientationCalibration::new();
+        zeros.add([0.0; 3]);
+        assert_eq!(
+            zeros.validate(1),
+            Err(CalibrationError::NotGravity { magnitude: 0.0 })
+        );
+        let mut saturated = OrientationCalibration::new();
+        saturated.add([78.0, 78.0, 78.0]);
+        assert!(matches!(
+            saturated.validate(1),
+            Err(CalibrationError::NotGravity { .. })
+        ));
     }
 
     fn advance(switch: &mut FlipModeSwitch, mean: [f32; 3]) -> Option<UiMode> {

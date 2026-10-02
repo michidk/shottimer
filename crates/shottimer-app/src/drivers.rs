@@ -69,13 +69,18 @@ impl<I: I2c> Imu<I> {
             .with_interrupt(InterruptPin::Int2, WomInterruptLevel::Low);
         block_on(self.inner.enable_wom(&mut SyncDelay(delay), wom)).map_err(command_error)
     }
-    pub fn exit_sleep<D: DelayNs>(&mut self, delay: &mut D) -> Result<(), HardwareError> {
+    /// Restores active sampling. `Ok(Some(_))` reports a failed WoM disable
+    /// that did not prevent sampling from resuming.
+    pub fn exit_sleep<D: DelayNs>(
+        &mut self,
+        delay: &mut D,
+    ) -> Result<Option<HardwareError>, HardwareError> {
         let disable_result = block_on(self.inner.disable_wom(&mut SyncDelay(delay)));
         // Restore normal sampling even if disabling WoM times out during recovery.
         self.inner.set_config(active_config());
         block_on(self.inner.apply_config()).map_err(|_| HardwareError::Imu)?;
         delay.delay_ms(20);
-        disable_result.map_err(command_error)
+        Ok(disable_result.err().map(command_error))
     }
     pub fn motion_pending(&mut self) -> Result<bool, HardwareError> {
         block_on(self.inner.read_interrupt_status())
@@ -115,15 +120,20 @@ pub struct Display<'a, S: SpiBus<u8>, D: OutputPin, C: OutputPin, R: OutputPin> 
 }
 
 impl<'a, S: SpiBus<u8>, D: OutputPin, C: OutputPin, R: OutputPin> Display<'a, S, D, C, R> {
-    pub fn new<T: DelayNs>(
-        spi: &'a RefCell<S>,
-        dc: &'a RefCell<D>,
-        cs: &'a RefCell<C>,
-        reset: R,
-        delay: &mut T,
-    ) -> Result<Self, HardwareError> {
-        let mut driver = GC9A01A::new(Shared(spi), Shared(dc), Shared(cs), reset, false, 240, 240);
-        driver.init(delay).map_err(|_| HardwareError::Display)?;
+    /// Performs no bus I/O; call `initialize` before showing frames.
+    pub fn new(spi: &'a RefCell<S>, dc: &'a RefCell<D>, cs: &'a RefCell<C>, reset: R) -> Self {
+        Self {
+            driver: GC9A01A::new(Shared(spi), Shared(dc), Shared(cs), reset, false, 240, 240),
+            spi,
+            dc,
+            cs,
+        }
+    }
+    /// Hardware-resets and configures the panel; safe to repeat after faults.
+    pub fn initialize<T: DelayNs>(&mut self, delay: &mut T) -> Result<(), HardwareError> {
+        self.driver
+            .init(delay)
+            .map_err(|_| HardwareError::Display)?;
         let orientation = match DISPLAY_ROTATION_DEGREES {
             0 => Orientation::Portrait,
             90 => Orientation::Landscape,
@@ -131,15 +141,9 @@ impl<'a, S: SpiBus<u8>, D: OutputPin, C: OutputPin, R: OutputPin> Display<'a, S,
             270 => Orientation::LandscapeSwapped,
             _ => unreachable!(),
         };
-        driver
+        self.driver
             .set_orientation(&orientation)
-            .map_err(|_| HardwareError::Display)?;
-        Ok(Self {
-            driver,
-            spi,
-            dc,
-            cs,
-        })
+            .map_err(|_| HardwareError::Display)
     }
     pub fn show(&mut self, buffer: &[u8], regions: Option<&[Region]>) -> Result<(), HardwareError> {
         if let Some(regions) = regions {
@@ -172,6 +176,28 @@ impl<'a, S: SpiBus<u8>, D: OutputPin, C: OutputPin, R: OutputPin> Display<'a, S,
     }
 }
 
+/// Shared `Platform::exit_sleep` sequence: both peripherals are restored even
+/// if one fails, so an IMU error cannot leave the LCD asleep.
+pub fn restore_after_sleep<I, S, D, C, R, T>(
+    imu: &mut Imu<I>,
+    display: &mut Display<'_, S, D, C, R>,
+    delay: &mut T,
+) -> Result<Option<HardwareError>, HardwareError>
+where
+    I: I2c,
+    S: SpiBus<u8>,
+    D: OutputPin,
+    C: OutputPin,
+    R: OutputPin,
+    T: DelayNs,
+{
+    let imu_result = imu.exit_sleep(delay);
+    let display_result = display.wake(delay);
+    let cleanup = imu_result?;
+    display_result?;
+    Ok(cleanup)
+}
+
 #[cfg(test)]
 mod tests {
     extern crate std;
@@ -185,6 +211,7 @@ mod tests {
         writes: Vec<(u8, u8)>,
         command_pending: bool,
         acknowledge: bool,
+        offline: bool,
     }
 
     impl Sensor {
@@ -196,6 +223,7 @@ mod tests {
                 writes: Vec::new(),
                 command_pending: false,
                 acknowledge: true,
+                offline: false,
             }
         }
     }
@@ -212,6 +240,9 @@ mod tests {
             operations: &mut [Operation<'_>],
         ) -> Result<(), Self::Error> {
             let mut sensor = self.0.borrow_mut();
+            if sensor.offline {
+                return Err(embedded_hal::i2c::ErrorKind::Other);
+            }
             let mut register = 0;
             for operation in operations {
                 match operation {
@@ -297,9 +328,132 @@ mod tests {
         assert_eq!(sensor.borrow().registers[0x08], 0);
         assert_eq!(
             imu.exit_sleep(&mut delay),
-            Err(HardwareError::ImuCommandTimeout)
+            Ok(Some(HardwareError::ImuCommandTimeout))
         );
         assert_eq!(sensor.borrow().registers[0x03] & 0x0f, 3);
+        assert_eq!(sensor.borrow().registers[0x08], 1);
+    }
+
+    #[derive(Default)]
+    struct Panel {
+        /// Bytes written while D/C selected command mode.
+        commands: Vec<u8>,
+        command_mode: bool,
+        fail: bool,
+    }
+    struct PanelBus(Rc<RefCell<Panel>>);
+    struct PanelDc(Rc<RefCell<Panel>>);
+    struct Pin;
+    impl embedded_hal::spi::ErrorType for PanelBus {
+        type Error = embedded_hal::spi::ErrorKind;
+    }
+    impl SpiBus<u8> for PanelBus {
+        fn read(&mut self, _: &mut [u8]) -> Result<(), Self::Error> {
+            unreachable!()
+        }
+        fn write(&mut self, bytes: &[u8]) -> Result<(), Self::Error> {
+            let mut panel = self.0.borrow_mut();
+            if panel.fail {
+                return Err(embedded_hal::spi::ErrorKind::Other);
+            }
+            if panel.command_mode {
+                panel.commands.extend_from_slice(bytes);
+            }
+            Ok(())
+        }
+        fn transfer(&mut self, _: &mut [u8], _: &[u8]) -> Result<(), Self::Error> {
+            unreachable!()
+        }
+        fn transfer_in_place(&mut self, _: &mut [u8]) -> Result<(), Self::Error> {
+            unreachable!()
+        }
+        fn flush(&mut self) -> Result<(), Self::Error> {
+            Ok(())
+        }
+    }
+    impl embedded_hal::digital::ErrorType for PanelDc {
+        type Error = core::convert::Infallible;
+    }
+    impl OutputPin for PanelDc {
+        fn set_low(&mut self) -> Result<(), Self::Error> {
+            self.0.borrow_mut().command_mode = true;
+            Ok(())
+        }
+        fn set_high(&mut self) -> Result<(), Self::Error> {
+            self.0.borrow_mut().command_mode = false;
+            Ok(())
+        }
+    }
+    impl embedded_hal::digital::ErrorType for Pin {
+        type Error = core::convert::Infallible;
+    }
+    impl OutputPin for Pin {
+        fn set_low(&mut self) -> Result<(), Self::Error> {
+            Ok(())
+        }
+        fn set_high(&mut self) -> Result<(), Self::Error> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn display_initialization_is_deferred_and_repeatable() {
+        let panel = Rc::new(RefCell::new(Panel::default()));
+        let spi = RefCell::new(PanelBus(panel.clone()));
+        let dc = RefCell::new(PanelDc(panel.clone()));
+        let cs = RefCell::new(Pin);
+        let mut display = Display::new(&spi, &dc, &cs, Pin);
+        assert!(panel.borrow().commands.is_empty());
+        panel.borrow_mut().fail = true;
+        assert_eq!(display.initialize(&mut Delay), Err(HardwareError::Display));
+        panel.borrow_mut().fail = false;
+        display.initialize(&mut Delay).unwrap();
+        let first = panel.borrow().commands.len();
+        assert!(first > 0);
+        display.initialize(&mut Delay).unwrap();
+        assert_eq!(panel.borrow().commands.len(), first * 2);
+    }
+
+    #[test]
+    fn sleep_restore_wakes_lcd_when_imu_cleanup_or_restore_fails() {
+        let panel = Rc::new(RefCell::new(Panel::default()));
+        let spi = RefCell::new(PanelBus(panel.clone()));
+        let dc = RefCell::new(PanelDc(panel.clone()));
+        let cs = RefCell::new(Pin);
+        let mut display = Display::new(&spi, &dc, &cs, Pin);
+        let sensor = Rc::new(RefCell::new(Sensor::new()));
+        let mut imu = Imu::new(Bus(sensor.clone()));
+        let mut delay = Delay;
+        imu.initialize(&mut delay).unwrap();
+
+        // A WoM-disable timeout is cleanup only: sampling and the LCD resume.
+        sensor.borrow_mut().acknowledge = false;
+        imu.enter_sleep(&mut delay).ok();
+        assert_eq!(
+            restore_after_sleep(&mut imu, &mut display, &mut delay),
+            Ok(Some(HardwareError::ImuCommandTimeout))
+        );
+        assert_eq!(panel.borrow().commands, [0x11, 0x29]);
+        assert_eq!(sensor.borrow().registers[0x08], 1);
+
+        // An unreachable IMU must not stop the LCD from waking.
+        panel.borrow_mut().commands.clear();
+        sensor.borrow_mut().offline = true;
+        assert_eq!(
+            restore_after_sleep(&mut imu, &mut display, &mut delay),
+            Err(HardwareError::Imu)
+        );
+        assert_eq!(panel.borrow().commands, [0x11, 0x29]);
+        sensor.borrow_mut().offline = false;
+
+        // An LCD failure is reported even though the IMU was restored first.
+        panel.borrow_mut().commands.clear();
+        panel.borrow_mut().fail = true;
+        sensor.borrow_mut().acknowledge = true;
+        assert_eq!(
+            restore_after_sleep(&mut imu, &mut display, &mut delay),
+            Err(HardwareError::Display)
+        );
         assert_eq!(sensor.borrow().registers[0x08], 1);
     }
 }

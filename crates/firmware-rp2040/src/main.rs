@@ -14,7 +14,7 @@ use embedded_hal_async::i2c::I2c;
 use panic_halt as _;
 use shottimer_app::{
     BatteryReading, HardwareError, Platform, Region, WakeStatus,
-    drivers::{Display, Imu},
+    drivers::{self, Display, Imu},
 };
 use shottimer_core::settings::{DISPLAY_BRIGHTNESS_PERCENT, SLEEP_CHECK_INTERVAL_MS};
 use usb_device::{
@@ -96,7 +96,8 @@ fn main() -> ! {
     let spi = RefCell::new(spi);
     let lcd_dc = RefCell::new(lcd_dc);
     let lcd_cs = RefCell::new(lcd_cs);
-    let display = Display::new(&spi, &lcd_dc, &lcd_cs, lcd_rst, &mut timer).unwrap();
+    // The shared runtime initializes the panel and retries on failure.
+    let display = Display::new(&spi, &lcd_dc, &lcd_cs, lcd_rst);
     let mut adc = hal::Adc::new(pac.ADC, &mut pac.RESETS);
     let battery_gpio = battery_gpio.into_pull_type::<hal::gpio::PullNone>();
     let mut battery_pin = hal::adc::AdcPin::new(battery_gpio).unwrap();
@@ -226,6 +227,9 @@ where
     fn delay_ms(&mut self, ms: u32) {
         self.timer.delay_ms(ms);
     }
+    fn initialize_display(&mut self) -> Result<(), HardwareError> {
+        self.display.initialize(&mut self.timer)
+    }
     fn initialize_imu(&mut self) -> Result<u8, HardwareError> {
         self.imu.initialize(&mut self.timer)
     }
@@ -287,9 +291,8 @@ where
     fn wait_for_wake(&mut self) {
         (self.wake)(WakeOperation::Wait);
     }
-    fn exit_sleep(&mut self) -> Result<(), HardwareError> {
+    fn exit_sleep(&mut self) -> Result<Option<HardwareError>, HardwareError> {
         (self.wake)(WakeOperation::Disable);
-        self.imu.exit_sleep(&mut self.timer)?;
-        self.display.wake(&mut self.timer)
+        drivers::restore_after_sleep(&mut self.imu, &mut self.display, &mut self.timer)
     }
 }
