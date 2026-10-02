@@ -6,6 +6,25 @@ Vibration-triggered espresso shot-timer firmware for Waveshare
 **RP2040-LCD-1.28** and **ESP32-S3-Touch-LCD-1.28** boards.
 Both use a 240×240 GC9A01 display and QMI8658 IMU.
 
+## Features
+
+- Automatic shot timing from machine vibration, with no button press required.
+- Circular progress display and history of the three previous shots.
+- Configurable vibration sensitivity, display, battery and sleep settings.
+- Motion gesture to switch between the timer and diagnostic display.
+- Shared Rust firmware for RP2040 and ESP32-S3 boards.
+- Parametric, 3D-printable desktop and magnetic housings for the RP2040 board.
+
+## Housing
+
+A printable, screw-free housing is available for the RP2040-LCD-1.28 board and
+MakerFocus 2000 mAh battery. See the [housing project](housing/README.md) for
+STLs, dimensions, assembly instructions and the parametric CAD build.
+[Download latest housing artifact](https://nightly.link/michidk/shottimer/workflows/housing.yml/main/housing.zip)
+(two STLs and one STEP, via nightly.link) · [GitHub build history](https://github.com/michidk/shottimer/actions/workflows/housing.yml?query=branch%3Amain+is%3Asuccess)
+
+![Desktop stand and magnetic housing](.github/images/housing-overview.png)
+
 ## Workspace
 
 - `crates/shottimer-core`: timing, motion/orientation, battery estimation, settings.
@@ -115,16 +134,6 @@ ELF: `target/xtensa-esp32s3-none-elf/release/shottimer-esp32s3`.
 The runner uses `espflash` with ESP32-S3, 16 MB flash, and serial monitoring.
 If automatic download fails, hold **BOOT**, press **RESET**, and retry.
 Do not flash an RP2040 UF2 onto ESP32-S3.
-
-## Housing
-
-A printable, screw-free housing is available for the RP2040-LCD-1.28 board and
-MakerFocus 2000 mAh battery. See the [housing project](housing/README.md) for
-STLs, dimensions, assembly instructions and the parametric CAD build.
-[Download latest housing artifact](https://nightly.link/michidk/shottimer/workflows/housing.yml/main/housing.zip)
-(two STLs and one STEP, via nightly.link) · [GitHub build history](https://github.com/michidk/shottimer/actions/workflows/housing.yml?query=branch%3Amain+is%3Asuccess)
-
-![Shot timer housing CAD render](.github/images/housing-assembly.png)
 
 ## Acknowledgements and licensing
 
