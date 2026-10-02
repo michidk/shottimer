@@ -14,7 +14,7 @@ from .positions import validate_positions, USB_ANGLES
 # PARAMETERS — mm unless marked degrees
 # ============================================================
 width, height, depth = 48.0, 58.0, 28.0
-wall, corner_radius = 2.4, 6.0
+wall, corner_radius, chamfer = 2.4, 6.0, 2.0
 cover_thickness, seam_gap = 2.4, 0.2
 screen_diameter, recess_radius, front_lip = 33.2, 18.4, 1.2
 board_recess, pcb_back, pcb_gap = -2.85, -5.25, .15
@@ -89,7 +89,10 @@ def build(usb='left', magnet='right'):
     def board_pose(shape):
         return pose(rotate(shape))
 
-    outer = rounded_box(width,depth,height,corner_radius).translate((0,0,height/2))
+    raw_outer = rounded_box(width,depth,height,corner_radius).translate((0,0,height/2))
+    # Match the desktop stand's exterior bevel while preserving the flat base.
+    chamfer_edges = [e for e in raw_outer.edges().vals() if e.BoundingBox().zmax > eps]
+    outer = raw_outer.newObject(chamfer_edges).chamfer(chamfer)
     split = depth/2-cover_thickness
     root = split+seam_gap/2
     cavity = rounded_box(width-2*wall,depth,height-2*wall,corner_radius-wall).translate((0,wall,height/2))
@@ -287,6 +290,7 @@ def main(usb='left', magnet='right'):
     report.update(usb=usb,magnet=magnet,dimensions_mm=[width,depth,height],
                   stage='feature prototype; physical fit unverified',rim_depth_mm=rim_depth,
                   rim_clearance_mm=rim_clearance,rib_interference_mm=rim_rib_projection-rim_clearance,
+                  exterior_chamfer_mm=chamfer,
                   magnet_pocket_mm=[magnet_diameter+magnet_diameter_clearance,magnet_thickness+magnet_glue_depth])
     (out/'fit-check.json').write_text(json.dumps(report,indent=2)+'\n')
     from .previews import render_magnetic_preview

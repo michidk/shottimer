@@ -14,7 +14,7 @@ Superseded shape studies are available in Git history.
 | Glue allowance | 0.25 mm radial; 0.5 mm behind a flush magnet |
 | Plastic backing behind pocket | 1.2 mm |
 | Default positions, viewed from display | USB left; magnet right |
-| Body walls / outline corners | 2.4 mm / R6 |
+| Body walls / outline corners / exterior chamfer | 2.4 mm / R6 / 2 mm |
 | Backplate locating rim | 3.5 mm deep, 1.4 mm wall |
 | Rim clearance / friction ribs | 0.15 mm / four ribs with 0.05 mm interference |
 | Rim insertion bevel | 0.4 mm |
