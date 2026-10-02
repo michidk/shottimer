@@ -1,5 +1,3 @@
 .venv/
 __pycache__/
 output/
-dist/
-reference/RP2040-LCD-1.28-corrected-local.step

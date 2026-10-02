@@ -5,15 +5,15 @@ from pathlib import Path
 import json, math
 import cadquery as cq
 import trimesh
-from assembly_study import import_board, xy_at
+from .board_reference import import_board
 
 # PARAMETERS — mm, degrees from vertical
 screen_tilt_deg=20.0
-width=52.0
+width=48.0
 front_base_y=-17.5
-screen_center_z=48.5  # 1 mm above the original fitted housing
+screen_center_z=50.5  # preserve overall height with the narrower rounded crown
 wall=2.4
-roof_wall=1.6  # extra rear-loading clearance for the tilted 52 mm envelope
+roof_wall=1.2  # clearance for PCB and battery insertion through narrower crown
 floor_t=2.4
 chamfer=2.0
 rear_y=28.02
@@ -43,7 +43,7 @@ cover_notch_height=1.0
 # rigid gap 0.15 mm fully seated / about 0.25 mm with latch play.
 # Confirm pad compression physically; no rigid preload on PCB.
 guide_angles=(60,90,150,210,270,300)
-front_hook_angles=(240,300)
+front_hook_angles=(240,270,300)
 front_hook_overlap=0.8
 front_hook_gap=0.5
 front_hook_t=1.2
@@ -51,10 +51,13 @@ board_insert_tilt_deg=12.0
 board_insert_raise_mm=1.2
 board_insert_pivot_y=-18.25
 guide_inner=18.40
+recess_radius=guide_inner
+base_blank_inner=18.10
 guide_length=2.4
+base_blank_length=guide_inner+guide_length-base_blank_inner
 guide_width=3.0
 guide_back=-5.15  # 0.10 mm forward of corrected PCB rear
-guide_front=-2.3
+guide_front=-front_lip_t  # bases meet the recessed display-seat plane
 pad_gap=0.15
 pad_r=1.0
 side_pad_x=18.0
@@ -62,15 +65,18 @@ side_pad_width=1.0
 side_pad_span=2.0
 usb_pad_span=1.4
 usb_side_pad=(19.3,-6.4)  # keep the right retainer clear of USB and curved roof
-side_arm_x=20.5
+side_arm_x=19.8
 arm_w=2.4
 bridge_depth=2.4
 pcb_back=-5.25
 retainer_depth=1.6
-usb_width=14.0
-usb_rearward_mm=3.0  # depth away from the angled front, along local -Z
+usb_width=12.0
+usb_corner_radius=0.8  # rounded USB opening corners; outer bounds stay 12 x 7 mm
+usb_shell_center_z=-3.56952175415  # manufacturer USB shell bbox midpoint before board placement
+usb_opening_center_z=usb_shell_center_z+board_recess
+usb_rearward_mm=-6.3-usb_opening_center_z  # align original 7 mm opening to corrected PCB socket
 usb_flare_depth=1.2
-usb_flare_extra=2.4
+usb_flare_extra=0.0  # opening remains exactly 12 x 7 mm at the exterior
 # PCB USB end outline from Waveshare STEP, local XY; clear by 0.15 mm.
 key_clearance=0.15
 key_x0=18.0
@@ -84,8 +90,8 @@ pcb_tab_slope=(9.187-6.404)/(21.262-15.781)
 key_seat_front=-4.239  # PCB front -4.389 + 0.15 mm
 key_seat_width=1.8
 key_seat_y=6.4
-usb_back=-10.0
-usb_front=-2.6  # retain original opening size
+usb_back=-9.8
+usb_front=-2.8  # 7 mm depth, retaining the previous opening centre
 battery_clearance=0.4
 battery_rail_x=18.0
 battery_rail_w=1.2
@@ -102,7 +108,7 @@ battery_back_pad_x=9.0
 battery_back_pad_z=(14.0,40.0)
 travel_samples=(0,0.5,1,2,4,6,10,15,25,40,60)
 eps=0.01
-OUT=Path(__file__).parent/'output'/'corrected-pcb-fit'
+OUT=Path(__file__).resolve().parents[1]/'output'/'usb-centered'
 
 
 def overlap(a,b): return a.intersect(b).val().Volume()
@@ -131,7 +137,7 @@ def build(include_board=True):
     aperture=pose(cq.Workplane('XY').workplane(offset=-15).circle(screen_opening_d/2).extrude(20))
     body=body.cut(aperture)
     # Relief for the actual glass outline, leaving the integrated front lip.
-    glass_relief=pose(cq.Workplane('XY').workplane(offset=-10).circle(18.15).extrude(10-front_lip_t))
+    glass_relief=pose(cq.Workplane('XY').workplane(offset=-10).circle(recess_radius).extrude(10-front_lip_t))
     body=body.cut(glass_relief)
     # Shallow recess for the full display connector above the USB-side tab.
     # It shares the round display's front seating plane; no lowered shelf.
@@ -141,8 +147,8 @@ def build(include_board=True):
     body=body.cut(connector_relief)
     for angle in guide_angles:
         guide=(cq.Workplane('XY').workplane(offset=guide_back)
-               .center(guide_inner+guide_length/2,0)
-               .box(guide_length,guide_width,guide_front-guide_back,centered=(True,True,False))
+               .center(base_blank_inner+base_blank_length/2,0)
+               .box(base_blank_length,guide_width,guide_front-guide_back,centered=(True,True,False))
                .rotate((0,0,0),(0,0,1),angle))
         body=body.union(pose(guide))
     # Two lower rim pockets: tilt the board under the lips, then seat it.
@@ -151,31 +157,23 @@ def build(include_board=True):
     hook_back=hook_front-front_hook_t
     for angle in front_hook_angles:
         stem=(cq.Workplane('XY').workplane(offset=hook_back)
-              .center(guide_inner+guide_length/2,0)
-              .box(guide_length,guide_width,guide_front-hook_back,centered=(True,True,False)))
+              .center(base_blank_inner+base_blank_length/2,0)
+              .box(base_blank_length,guide_width,guide_front-hook_back,centered=(True,True,False)))
         lip=(cq.Workplane('XY').workplane(offset=hook_back)
              .center(guide_inner+(guide_length-front_hook_overlap)/2,0)
              .box(guide_length+front_hook_overlap,guide_width,front_hook_t,centered=(True,True,False)))
         hook=stem.union(lip).rotate((0,0,0),(0,0,1),angle)
         body=body.union(pose(hook))
-    usb=pose(box(20,usb_width,usb_front-usb_back,(27,0,(usb_front+usb_back)/2)).translate((0,0,-usb_rearward_mm)))
-    # A flared entry lets the cable overmould approach the socket more closely.
-    flare=(cq.Workplane('YZ',origin=(width/2-usb_flare_depth,0,(usb_front+usb_back)/2))
-           .rect(usb_width,usb_front-usb_back)
-           .workplane(offset=usb_flare_depth+eps)
-           .rect(usb_width+usb_flare_extra,usb_front-usb_back+usb_flare_extra).loft())
-    body=body.cut(usb).cut(pose(flare.translate((0,0,-usb_rearward_mm))))
-    # Two shaped rails key the sloping edges of the PCB's USB tab. They locate
-    # the PCB outline rather than applying force to the connector shell.
-    def tab_edge(x):return pcb_tab_tip_y+(pcb_tab_tip_x-x)*pcb_tab_slope
-    for sign in (-1,1):
-        points=[(key_x0,sign*(tab_edge(key_x0)+key_clearance)),
-                (key_x1,sign*(tab_edge(key_x1)+key_clearance)),
-                (key_x1,sign*(tab_edge(key_x1)+key_clearance+key_wall)),
-                (key_x0,sign*(tab_edge(key_x0)+key_clearance+key_wall))]
-        key=cq.Workplane('XY').workplane(offset=key_back).polyline(points).close().extrude(key_front-key_back)
-        # Side contact only: no shelf underneath the display connector.
-        body=body.union(pose(key))
+    # Trim the bases and the display recess to the exact same cylindrical face.
+    # Stop at the catching lips so their 0.8 mm inward overlap is preserved.
+    base_relief=pose(cq.Workplane('XY').workplane(offset=hook_front)
+                     .circle(recess_radius).extrude(-front_lip_t-hook_front+eps))
+    body=body.cut(base_relief)
+    usb_local=box(20,usb_width,usb_front-usb_back,
+                  (27,0,(usb_front+usb_back)/2-usb_rearward_mm))
+    usb_local=usb_local.edges('|X').fillet(usb_corner_radius)
+    body=body.cut(pose(usb_local))
+    # USB-side guide blocks removed as requested.
     # Continuous locating rim, with small side ribs supplying the press fit.
     latch_root=split_y+seam_gap/2
     section=cq.Workplane('XZ',origin=(0,latch_root,0)).add(cavity.val()).section()
@@ -222,14 +220,14 @@ def build(include_board=True):
         span=abs(side_arm_x-abs(x))+side_pad_width
         bridge=box(span,bridge_depth,arm_w,(sign*(side_arm_x+abs(x))/2,shoulder_y,pz))
         stem=box(arm_w,rear_y-shoulder_y,arm_w,(sign*side_arm_x,(rear_y+shoulder_y)/2,pz))
-        cover=cover.union(tip).union(bridge).union(stem)
+        cover=cover.union(bridge).union(stem)
         tip_points.append((x,local_y))
     # Upper stop remains above the maximum-size battery.
-    top_x,top_y=0,16.8
+    top_x,top_y=0,16.5
     tip=pose(cq.Workplane('XY').workplane(offset=pcb_back-pad_gap-retainer_depth).center(top_x,top_y).circle(pad_r).extrude(retainer_depth))
     px,py,pz=point(top_x,top_y,pcb_back-pad_gap-retainer_depth/2)
     stem=box(arm_w,rear_y-py,arm_w,(px,(rear_y+py)/2,pz))
-    cover=cover.union(tip).union(stem)
+    cover=cover.union(stem)
     tip_points.append((top_x,top_y))
     # Battery frame: its lower end sits in an extended tilted pocket; a
     # broad wedge integral with the rear cover supports its rear face.
@@ -251,7 +249,7 @@ def build(include_board=True):
     # Back face of maximum pack: y(z) is the inclined support plane.
     back_bottom_y=by+battery_dims[1]/2*math.cos(ba)
     back_bottom_z=bz-battery_dims[1]/2*math.sin(ba)
-    back_top_z=back_bottom_z+battery_dims[2]*math.cos(ba)
+    back_top_z=back_bottom_z+battery_dims[2]*math.cos(ba)-3.0  # roof clearance above broad support
     back_y=lambda z: back_bottom_y+(z-back_bottom_z)*math.tan(ba)
     wedge=(cq.Workplane('YZ').polyline([(back_y(battery_pocket_floor_z),battery_pocket_floor_z),
             (rear_y,battery_pocket_floor_z),(rear_y,back_top_z),(back_y(back_top_z),back_top_z)])
@@ -282,8 +280,11 @@ def main(check_board_insertion=True):
     report={'retention':'inner rim with battery-corner reliefs and four shallow friction ribs',
             'rim_depth_mm':3.5,'rim_wall_mm':1.4,'rim_clearance_mm':0.15,
             'rib_interference_mm':0.05,'lead_chamfer_mm':0.4,'battery_support_and_pocket_width_mm':battery_wedge_width,
-            'usb_opening_mm':[14,7.4],'usb_rearward_mm':3,
+            'usb_opening_mm':[12,7],'usb_rearward_mm':usb_rearward_mm,'width_mm':width,'roof_wall_mm':roof_wall,
+            'usb_socket_to_outer_wall_mm':width/2-21.08,
             'physical_press_fit_test_required':True,'pcb_mm':1.6,'display_mm':2.3,'front_lip_mm':front_lip_t,'display_front_gap_mm':display_front_gap}
+    outer_bounds=p['outer'].val().BoundingBox()
+    report['dimensions_mm']=[round(v,3) for v in (outer_bounds.xlen,outer_bounds.ylen,outer_bounds.zlen)]
     for name in ('body','cover','cover_print'):
         assert p[name].val().isValid(), name+' invalid'
         assert len(p[name].solids().vals())==1,name+' disconnected'
@@ -309,12 +310,23 @@ def main(check_board_insertion=True):
         moved=rigid.translate((0,travel,0))
         assert overlap(moved,p['body'])<1e-5,('cover insertion',travel)
         assert overlap(p['cover'].translate((0,travel,0)),p['board'])<1e-5
+        assert overlap(p['battery_max'].translate((0,travel,0)),p['body'])<1e-5,('battery rear insertion',travel)
     local_pack=cq.Workplane('XY').box(*battery_dims,centered=(True,True,False))
     for travel in (0,2,5,10,20,40,60):
         moved=p['battery_pose'](local_pack.translate((0,-travel,battery_loading_lift)))
         assert overlap(moved,p['cover'])<1e-5,('battery loading',travel)
     for lift in (0,0.8,1.6,2.4,battery_loading_lift):
         assert overlap(p['battery_pose'](local_pack.translate((0,0,lift))),p['cover'])<1e-5
+    usb=p['board_local'].solids().vals()[80].BoundingBox()
+    lo=usb_back-usb_rearward_mm;hi=usb_front-usb_rearward_mm
+    assert lo<usb.zmin<usb.zmax<hi
+    assert -usb_width/2<usb.ymin<usb.ymax<usb_width/2
+    path=box(30,usb.ylen,usb.zlen,(usb.xmax+15,(usb.ymin+usb.ymax)/2,(usb.zmin+usb.zmax)/2))
+    blocked=overlap(p['body'],p['pose'](path))
+    assert blocked<1e-5,('USB access',blocked)
+    report.update(shell_access_path_collision_mm3=blocked,
+                  opening_depth_interval_mm=[lo,hi],shell_depth_interval_mm=[usb.zmin,usb.zmax],
+                  front_rear_shell_margin_mm=[hi-usb.zmax,usb.zmin-lo])
     for name in ('body','cover_print'):
         path=OUT/(name+'.stl');cq.exporters.export(p[name],str(path),tolerance=.01,angularTolerance=.1)
         mesh=trimesh.load(path,force='mesh');assert mesh.is_watertight and mesh.is_volume,name
@@ -323,7 +335,5 @@ def main(check_board_insertion=True):
     assy.export(str(OUT/'assembly.step'))
     (OUT/'fit-check.json').write_text(json.dumps(report,indent=2)+'\n')
     print(report,flush=True)
-    from render_corrected_fit import main as render
-    render(p)
-
-if __name__=='__main__':main()
+    from .previews import render_stand_views
+    render_stand_views(p,OUT/'body_views.png')

@@ -49,10 +49,8 @@ jobs:
         run: |
           uv venv --python 3.12 .venv
           uv pip install --python .venv/bin/python -r requirements.txt --override overrides.txt
-      - name: Check assembly and insertion paths
-        run: .venv/bin/python usb_centered_stand.py
-      - name: Check USB access and export printable files
-        run: .venv/bin/python finish_usb_centered.py
+      - name: Validate assembly, insertion paths and USB access; export printable files
+        run: .venv/bin/python build.py stand
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: housing

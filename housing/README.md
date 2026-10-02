@@ -1,28 +1,41 @@
 # Shot timer housing
 
-Parametric, screw-free enclosure for the Waveshare **RP2040-LCD-1.28** and a
-MakerFocus 3.7 V 2000 mAh LiPo. The display leans back toward the viewer, with
-the battery behind it and a removable press-fit rear cover. Compatibility with
-the ESP32-S3 board has not been checked.
+Two parametric, screw-free enclosures for the Waveshare **RP2040-LCD-1.28**
+and a MakerFocus 3.7 V 2000 mAh LiPo: a tilted desktop stand and a flat magnetic
+housing. Both use a removable press-fit rear cover. Compatibility with the
+ESP32-S3 board has not been checked.
 
-![Assembled housing and centered USB opening](../.github/images/housing-usb.png)
+![Front views of the desktop stand and magnetic housing](../.github/images/housing-overview.png)
 
-## Current printable revision
+## Magnetic housing prototype
 
-Use **`usb_centered_stand.py`** and **`output/usb-centered/`**.
-Earlier scripts and output folders are retained as design history; they are
-superseded. [DESIGN.txt](DESIGN.txt) records the iterations.
+The separate [magnetic housing](docs/magnetic.md) uses the approved flat
+48 × 58 × 28 mm shell, no stand, and a removable press-fit backplate with a
+battery cradle. Its Ø12.5 × 3.2 mm glue pocket holds a Ø12 × 2.7 mm magnet.
+USB and magnet sides are selected independently, with same-side combinations
+rejected. Default: USB left, magnet right, viewed from the display.
 
-The build artifact contains exactly these three files:
+```sh
+cd housing
+.venv/bin/python build.py magnetic --usb left --magnet right
+```
+
+This remains a feature prototype; see its fit report and preview before printing.
+
+## Desktop stand
+
+The desktop stand is defined in **`cad/stand.py`** and builds into
+**`output/usb-centered/`**. Superseded prototypes are available in Git history.
+
+The desktop stand build artifact contains exactly these three files:
 
 - `body.stl` — front housing with integrated bezel and floor.
 - `cover_print.stl` — rear cover, already oriented for printing.
 - `assembly.step` — housing, cover, board and battery.
 
-The latest change moves the USB opening **2.88048 mm toward the display** and
-rounds its corners to **R0.8 mm**, retaining its **12 × 7 mm** overall size.
-It is centered on the corrected CAD connector, with approximately **1.42 mm**
-clearance to the metal shell at both front and rear edges.
+The **12 × 7 mm** USB opening has **R0.8 mm** corners and is centered on the
+corrected CAD connector, with approximately **1.42 mm** clearance to its metal
+shell at both front and rear edges.
 
 ![Housing from six directions](../.github/images/housing-views.png)
 
@@ -45,13 +58,13 @@ There is no release-publishing job and the workflow has read-only repository
 permissions. The direct latest-download link uses the third-party nightly.link
 service; the actual files remain GitHub Actions artifacts.
 
-Generated `output/` and `dist/` files are ignored by Git. CAD source, the original
+Generated `output/` files are ignored by Git. CAD source, the original
 board reference and README images are versioned. Fit reports and renders are
 produced locally during validation but are not included in the download.
 Run `render_docs.py` explicitly to refresh documentation images; CI does not
 commit generated images.
 
-## Dimensions and construction
+## Desktop stand dimensions and construction
 
 | Parameter | Current value |
 | --- | --- |
@@ -100,34 +113,49 @@ EGL/OpenGL runtime and DejaVu fonts.
 cd housing                         # from the repository root
 uv venv --python 3.12 .venv
 uv pip install --python .venv/bin/python -r requirements.txt --override overrides.txt
-.venv/bin/python finish_usb_centered.py
+.venv/bin/python build.py stand
 ```
 
 The override updates PyOpenGL for the NumPy runtime used here. The command
-builds the current assembly, validates the changed material and connector
-access, exports STL/STEP files, and renders the USB-side and six-view images.
+builds the current assembly, checks component and insertion clearances plus USB
+access, exports STL/STEP files, and renders the six-view review sheet.
 To refresh the README images after rebuilding:
 
 ```sh
 .venv/bin/python render_docs.py
 ```
 
-Edit the parameters at the top of `usb_centered_stand.py` for geometry changes.
-`finish_usb_centered.py` validates this revision against `curved_holder_stand.py`;
-its delta checks rely on the preceding revision’s fit checks. For broader design
-changes, run `usb_centered_stand.py` directly for full assembly and sampled
-insertion checks. `render_usb_centered.py` renders the installed board and housing.
+Edit dimensions at the top of `cad/stand.py` or `cad/magnetic.py`.
+The magnetic model also accepts `--usb left|right|up` and `--magnet left|right`;
+USB and magnet cannot share a side. The desktop stand currently has fixed right-side USB.
+
+## Folder layout
+
+```text
+housing/
+  build.py              Build and validate either current model
+  render_docs.py        Refresh the front-facing README images
+  cad/                  Models, reference importer, positions and shared rendering
+  docs/magnetic.md      Magnetic model dimensions and assembly instructions
+  reference/            Original manufacturer STEP and dimension drawing
+  output/               Current generated STL, STEP, fit reports and previews (ignored)
+  requirements.txt      CAD and rendering dependencies
+  overrides.txt         Dependency compatibility override
+```
+
+The local `.venv/` is ignored. Old experiments, duplicate renderers and obsolete
+exports have been removed; their committed sources remain in Git history.
 
 ## Reference model and validation limits
 
 `reference/RP2040-LCD-1.28.step` is the manufacturer board reference.
-`assembly_study.import_board()` corrects the simplified stack to the measured
+`cad.board_reference.import_board()` corrects the simplified stack to the measured
 **1.6 mm PCB + 2.3 mm display** and adds a conservative envelope over the
 USB-side display connector. The connector envelope reaches the display face;
 its lateral outline is approximate. The original STEP is retained unchanged.
 
 The current checks require single valid housing/cover solids and watertight
-STLs, check added wall material against components and sampled insertion
+STLs, check the current parts against components and sampled insertion
 motions, and extend the USB metal-shell silhouette through the wall to ensure
 it is unobstructed. They do not model the cable overmould, loose wires, battery
 mating plug, material flex or every intermediate insertion position. The board
