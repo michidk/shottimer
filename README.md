@@ -42,8 +42,8 @@ and PSRAM are not used yet.
 
 ## Behavior
 
-Keep the display still and face-up during boot calibration, which follows a
-three-second RGB display test. The default configuration then starts in Timer mode.
+After the three-second RGB display test, keep the display still and face-up during
+boot calibration. The default configuration then starts in Timer mode.
 
 - Detects vibration from the largest per-axis standard deviation across ten
   acceleration samples taken at 10 ms intervals.
