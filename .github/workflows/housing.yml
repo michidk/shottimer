@@ -15,10 +15,10 @@ on:
 permissions:
   contents: read
 
-# Serialize rolling uploads so two builds cannot mix release assets.
+# Superseded branch builds can stop; artifacts belong to individual runs.
 concurrency:
   group: housing-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -62,40 +62,3 @@ jobs:
             housing/output/usb-centered/assembly.step
           if-no-files-found: error
           retention-days: 90
-
-  publish:
-    needs: build
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions:
-      contents: write
-      actions: read
-    steps:
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
-        with:
-          name: housing-${{ github.sha }}
-          path: dist
-      - name: Update rolling housing prerelease
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          SOURCE_SHA: ${{ github.sha }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          tag=housing-latest
-          notes="$RUNNER_TEMP/housing-release-notes.md"
-          printf 'Latest successful housing build from main.\n\nSource commit: [%s](https://github.com/%s/commit/%s).\n\nDownload body.stl and cover_print.stl for printing, or assembly.step for CAD.\n\nPrint body bottom-down and cover outside-face-down. Physical fit still needs verification.\n' \
-            "$SOURCE_SHA" "$GH_REPO" "$SOURCE_SHA" > "$notes"
-          if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" dist/body.stl dist/cover_print.stl dist/assembly.step --clobber
-            gh api --method PATCH "repos/$GH_REPO/git/refs/tags/$tag" \
-              -f sha="$SOURCE_SHA" -F force=true >/dev/null
-            gh release edit "$tag" --title 'Housing: latest successful main build' \
-              --notes-file "$notes" --prerelease --latest=false
-          else
-            gh release create "$tag" dist/body.stl dist/cover_print.stl dist/assembly.step --target "$SOURCE_SHA" \
-              --title 'Housing: latest successful main build' \
-              --notes-file "$notes" --prerelease --latest=false
-          fi

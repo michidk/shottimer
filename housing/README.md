@@ -13,9 +13,11 @@ Use **`usb_centered_stand.py`** and **`output/usb-centered/`**.
 Earlier scripts and output folders are retained as design history; they are
 superseded. [DESIGN.txt](DESIGN.txt) records the iterations.
 
-- [Front housing STL](https://github.com/michidk/shottimer/releases/download/housing-latest/body.stl) — integrated bezel and floor.
-- [Rear cover STL](https://github.com/michidk/shottimer/releases/download/housing-latest/cover_print.stl) — already oriented for printing.
-- [Assembly STEP](https://github.com/michidk/shottimer/releases/download/housing-latest/assembly.step) — housing, cover, board and battery.
+The build artifact contains exactly these three files:
+
+- `body.stl` — front housing with integrated bezel and floor.
+- `cover_print.stl` — rear cover, already oriented for printing.
+- `assembly.step` — housing, cover, board and battery.
 
 The latest change moves the USB opening **2.88048 mm toward the display** and
 rounds its corners to **R0.8 mm**, retaining its **12 × 7 mm** overall size.
@@ -26,24 +28,24 @@ clearance to the metal shell at both front and rear edges.
 
 ## Automated builds and downloads
 
-The [rolling housing prerelease](https://github.com/michidk/shottimer/releases/tag/housing-latest)
-provides stable links to **body.stl**, **cover_print.stl** and **assembly.step**.
+[Open successful housing builds on main](https://github.com/michidk/shottimer/actions/workflows/housing.yml?query=branch%3Amain+is%3Asuccess),
+choose the newest run, and download `housing-<commit SHA>` under **Artifacts**.
+GitHub supplies a ZIP containing only the two STL files and the STEP assembly.
+Downloading Actions artifacts through GitHub requires sign-in; artifacts are
+retained for 90 days. For a specific commit, select its workflow run instead.
 
 The [Housing CAD workflow](../.github/workflows/housing.yml) builds housing changes
 on `main` and pull requests, and supports manual runs. It checks the full assembly,
-sampled insertion paths and USB access. Every successful build uploads just these
-three CAD files as a `housing-<commit SHA>` Actions artifact, retained for 90 days.
-
-Successful `main` builds also update the `housing-latest` prerelease and tag with
-the same three files. The release exists to provide stable download links;
-per-commit artifacts remain available in the workflow runs. Pull requests never
-publish releases. Release notes record the source commit; save it with your files
-when recording a print, because rolling downloads are mutable. Fit reports and
-renders are generated during validation but are not uploaded as download assets.
+sampled insertion paths and USB access before uploading the three files.
+There is no release-publishing job and the workflow has read-only repository
+permissions. GitHub has no native stable URL for the latest artifact, so the
+README points to successful workflow runs instead.
 
 Generated `output/` and `dist/` files are ignored by Git. CAD source, the original
-board reference and README images are versioned. Run `render_docs.py` explicitly
-to refresh documentation images; CI does not commit generated images.
+board reference and README images are versioned. Fit reports and renders are
+produced locally during validation but are not included in the download.
+Run `render_docs.py` explicitly to refresh documentation images; CI does not
+commit generated images.
 
 ## Dimensions and construction
 
