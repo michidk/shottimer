@@ -83,8 +83,10 @@ and flashing the firmware.
 
 ## Build and flash
 
-Use rustup's Cargo/Rust binaries (put `~/.cargo/bin` before any system Rust in
-`PATH`). Host checks require no board:
+Install [rustup](https://rustup.rs) and use its Cargo/Rust binaries (put
+`~/.cargo/bin` before any system Rust in `PATH`). Rustup installs the pinned
+toolchain, components and RP2040 target from `rust-toolchain.toml`. Host checks
+require no board:
 
 ```sh
 cargo fmt --all -- --check
