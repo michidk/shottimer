@@ -10,7 +10,7 @@ There is no water-level or pump integration.
 A printable, screw-free housing is available for the RP2040-LCD-1.28 board and
 MakerFocus 2000 mAh battery. See the [housing project](housing/README.md) for
 STLs, dimensions, assembly instructions and the parametric CAD build.
-[Download the latest housing build](https://github.com/michidk/shottimer/releases/download/housing-latest/housing.zip)
+[Download the latest housing build](https://github.com/michidk/shottimer/releases/tag/housing-latest)
 (updated after successful housing builds on `main`).
 
 ![Shot timer housing CAD render](.github/images/housing-assembly.png)

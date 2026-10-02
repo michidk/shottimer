@@ -16,7 +16,6 @@ superseded. [DESIGN.txt](DESIGN.txt) records the iterations.
 - [Front housing STL](https://github.com/michidk/shottimer/releases/download/housing-latest/body.stl) — integrated bezel and floor.
 - [Rear cover STL](https://github.com/michidk/shottimer/releases/download/housing-latest/cover_print.stl) — already oriented for printing.
 - [Assembly STEP](https://github.com/michidk/shottimer/releases/download/housing-latest/assembly.step) — housing, cover, board and battery.
-- [Fit report](https://github.com/michidk/shottimer/releases/download/housing-latest/fit-check.json).
 
 The latest change moves the USB opening **2.88048 mm toward the display** and
 rounds its corners to **R0.8 mm**, retaining its **12 × 7 mm** overall size.
@@ -27,19 +26,20 @@ clearance to the metal shell at both front and rear edges.
 
 ## Automated builds and downloads
 
-[Download the latest housing ZIP](https://github.com/michidk/shottimer/releases/download/housing-latest/housing.zip)
-from the [rolling housing prerelease](https://github.com/michidk/shottimer/releases/tag/housing-latest).
-The first successful CI build makes these download links available.
+The [rolling housing prerelease](https://github.com/michidk/shottimer/releases/tag/housing-latest)
+provides stable links to **body.stl**, **cover_print.stl** and **assembly.step**.
 
 The [Housing CAD workflow](../.github/workflows/housing.yml) builds housing changes
 on `main` and pull requests, and supports manual runs. It checks the full assembly,
-sampled insertion paths and USB access, then exports STL/STEP files, previews,
-fit reports, source commit information and SHA-256 checksums. Per-run
-`housing-<commit SHA>` Actions artifacts are retained for 90 days.
+sampled insertion paths and USB access. Every successful build uploads just these
+three CAD files as a `housing-<commit SHA>` Actions artifact, retained for 90 days.
 
-Successful `main` builds update the `housing-latest` prerelease and tag. Pull
-requests never publish releases. Rolling downloads are mutable; keep the ZIP
-and `build-info.json` to record exactly which model you printed.
+Successful `main` builds also update the `housing-latest` prerelease and tag with
+the same three files. The release exists to provide stable download links;
+per-commit artifacts remain available in the workflow runs. Pull requests never
+publish releases. Release notes record the source commit; save it with your files
+when recording a print, because rolling downloads are mutable. Fit reports and
+renders are generated during validation but are not uploaded as download assets.
 
 Generated `output/` and `dist/` files are ignored by Git. CAD source, the original
 board reference and README images are versioned. Run `render_docs.py` explicitly

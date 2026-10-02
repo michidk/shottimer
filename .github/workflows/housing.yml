@@ -53,12 +53,13 @@ jobs:
         run: .venv/bin/python usb_centered_stand.py
       - name: Check USB access and export printable files
         run: .venv/bin/python finish_usb_centered.py
-      - name: Package housing downloads
-        run: .venv/bin/python package_release.py
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: housing-${{ github.sha }}
-          path: housing/dist/*
+          path: |
+            housing/output/usb-centered/body.stl
+            housing/output/usb-centered/cover_print.stl
+            housing/output/usb-centered/assembly.step
           if-no-files-found: error
           retention-days: 90
 
@@ -84,14 +85,17 @@ jobs:
         run: |
           set -euo pipefail
           tag=housing-latest
+          notes="$RUNNER_TEMP/housing-release-notes.md"
+          printf 'Latest successful housing build from main.\n\nSource commit: [%s](https://github.com/%s/commit/%s).\n\nDownload body.stl and cover_print.stl for printing, or assembly.step for CAD.\n\nPrint body bottom-down and cover outside-face-down. Physical fit still needs verification.\n' \
+            "$SOURCE_SHA" "$GH_REPO" "$SOURCE_SHA" > "$notes"
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" dist/* --clobber
+            gh release upload "$tag" dist/body.stl dist/cover_print.stl dist/assembly.step --clobber
             gh api --method PATCH "repos/$GH_REPO/git/refs/tags/$tag" \
               -f sha="$SOURCE_SHA" -F force=true >/dev/null
             gh release edit "$tag" --title 'Housing: latest successful main build' \
-              --notes-file dist/release-notes.md --prerelease --latest=false
+              --notes-file "$notes" --prerelease --latest=false
           else
-            gh release create "$tag" dist/* --target "$SOURCE_SHA" \
+            gh release create "$tag" dist/body.stl dist/cover_print.stl dist/assembly.step --target "$SOURCE_SHA" \
               --title 'Housing: latest successful main build' \
-              --notes-file dist/release-notes.md --prerelease --latest=false
+              --notes-file "$notes" --prerelease --latest=false
           fi
