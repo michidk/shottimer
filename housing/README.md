@@ -7,7 +7,7 @@ ESP32-S3 board has not been checked.
 
 ![Front views of the desktop stand and magnetic housing](../.github/images/housing-overview.png)
 
-## Magnetic housing prototype
+## RP2040-LCD-1.28 Magnetic Housing
 
 The separate [magnetic housing](docs/magnetic.md) uses the approved flat
 48 × 58 × 28 mm shell, no stand, and a removable press-fit backplate with a
@@ -22,12 +22,12 @@ cd housing
 
 This remains a feature prototype; see its fit report and preview before printing.
 
-## Desktop stand
+## RP2040-LCD-1.28 Desktop Stand
 
 The desktop stand is defined in **`cad/stand.py`** and builds into
 **`output/usb-centered/`**. Superseded prototypes are available in Git history.
 
-The desktop stand build artifact contains exactly these three files:
+The desktop stand exports these three files locally:
 
 - `body.stl` — front housing with integrated bezel and floor.
 - `cover_print.stl` — rear cover, already oriented for printing.
@@ -44,7 +44,23 @@ shell at both front and rear edges.
 [Download latest housing artifact](https://nightly.link/michidk/shottimer/workflows/housing.yml/main/housing.zip)
 via [nightly.link](https://github.com/oprypin/nightly.link), which resolves the
 `housing` artifact from the latest successful `main` workflow run without requiring
-GitHub sign-in. The ZIP contains only `body.stl`, `cover_print.stl` and `assembly.step`.
+GitHub sign-in. The ZIP includes both housing variants, each with two STL files and one STEP assembly.
+The folder and filenames include the target PCB and housing configuration:
+
+```text
+rp2040-lcd-1.28-desktop-stand/
+  rp2040-lcd-1.28-desktop-stand-body.stl
+  rp2040-lcd-1.28-desktop-stand-cover.stl
+  rp2040-lcd-1.28-desktop-stand-assembly.step
+rp2040-lcd-1.28-magnetic-usb-left-magnet-right/
+  rp2040-lcd-1.28-magnetic-usb-left-magnet-right-body.stl
+  rp2040-lcd-1.28-magnetic-usb-left-magnet-right-cover.stl
+  rp2040-lcd-1.28-magnetic-usb-left-magnet-right-assembly.step
+```
+
+Use the body and cover from the same folder. The magnetic download uses USB left
+and magnet right, viewed from the display; build other configurations locally.
+The magnetic housing remains a prototype pending physical fit verification.
 
 [GitHub build history](https://github.com/michidk/shottimer/actions/workflows/housing.yml?query=branch%3Amain+is%3Asuccess) is the fallback:
 open a successful run and download `housing` under **Artifacts** (GitHub sign-in
@@ -53,7 +69,7 @@ its workflow run; the stable artifact name is reused across separate runs.
 
 The [Housing CAD workflow](../.github/workflows/housing.yml) builds housing changes
 on `main` and pull requests, and supports manual runs. It checks the full assembly,
-sampled insertion paths and USB access before uploading the three files.
+sampled insertion paths and USB access for both models before uploading the six CAD files.
 There is no release-publishing job and the workflow has read-only repository
 permissions. The direct latest-download link uses the third-party nightly.link
 service; the actual files remain GitHub Actions artifacts.
@@ -135,6 +151,7 @@ USB and magnet cannot share a side. The desktop stand currently has fixed right-
 housing/
   build.py              Build and validate either current model
   render_docs.py        Refresh the front-facing README images
+  prepare_artifact.py   Collect both models with PCB-qualified filenames
   cad/                  Models, reference importer, positions and shared rendering
   docs/magnetic.md      Magnetic model dimensions and assembly instructions
   reference/            Original manufacturer STEP and dimension drawing

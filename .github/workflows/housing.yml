@@ -49,14 +49,15 @@ jobs:
         run: |
           uv venv --python 3.12 .venv
           uv pip install --python .venv/bin/python -r requirements.txt --override overrides.txt
-      - name: Validate assembly, insertion paths and USB access; export printable files
+      - name: Build and validate RP2040-LCD-1.28 desktop stand
         run: .venv/bin/python build.py stand
+      - name: Build and validate RP2040-LCD-1.28 magnetic housing
+        run: .venv/bin/python build.py magnetic --usb left --magnet right
+      - name: Collect both housings with PCB and variant names
+        run: .venv/bin/python prepare_artifact.py
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: housing
-          path: |
-            housing/output/usb-centered/body.stl
-            housing/output/usb-centered/cover_print.stl
-            housing/output/usb-centered/assembly.step
+          path: housing/output/artifact/
           if-no-files-found: error
           retention-days: 90

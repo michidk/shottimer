@@ -1,4 +1,4 @@
-# Magnetic enclosure feature prototype
+# RP2040-LCD-1.28 Magnetic Housing
 
 The approved 48 W × 58 H × 28 D mm shell now has a removable press-fit
 backplate, using the same retention approach as the existing desktop housing.
