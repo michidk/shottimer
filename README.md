@@ -23,6 +23,8 @@ STLs, dimensions, assembly instructions and the parametric CAD build.
 [Download latest housing artifact](https://nightly.link/michidk/shottimer/workflows/housing.yml/main/housing.zip)
 (desktop stand and magnetic housing; two STLs and one STEP each, via nightly.link)
 
+[View on MakerWorld](https://makerworld.com/en/models/3389507-shottimer)
+
 ![Desktop stand and magnetic housing](.github/images/housing-overview.png)
 
 ## Workspace
