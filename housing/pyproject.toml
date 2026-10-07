@@ -1,0 +1,18 @@
+[project]
+name = "shottimer-housing"
+version = "0.1.0"
+description = "CadQuery models, validation and renders for the shot timer housings"
+requires-python = "==3.12.*"
+dependencies = [
+    "cadquery==2.8.0",
+    "trimesh==5.1.1",
+    "pyrender==0.1.45",
+    "Pillow==12.3.0",
+    "numpy==2.5.3",
+    "lxml==6.1.3",
+]
+
+[tool.uv]
+package = false
+# pyrender pins an old PyOpenGL release that fails with the current NumPy runtime.
+override-dependencies = ["PyOpenGL==3.1.10"]

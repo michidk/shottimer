@@ -135,12 +135,12 @@ and, without a GPU, `LIBGL_ALWAYS_SOFTWARE=1`.
 
 ```sh
 cd housing                         # from the repository root
-uv venv --python 3.12 .venv
-uv pip install --python .venv/bin/python -r requirements.txt --override overrides.txt
+uv sync --locked --python 3.12
 .venv/bin/python build.py stand
 ```
 
-The override updates PyOpenGL for the NumPy runtime used here. The command
+`uv.lock` pins the full dependency graph; its PyOpenGL override supports the
+NumPy runtime used here. The command
 builds the current assembly, checks component and insertion clearances plus USB
 access, exports STL/STEP files, and renders the six-view review sheet.
 To refresh the README images after rebuilding:
@@ -164,8 +164,8 @@ housing/
   docs/magnetic.md      Magnetic model dimensions and assembly instructions
   reference/            Original manufacturer STEP and dimension drawing
   output/               Current generated STL, STEP, fit reports and previews (ignored)
-  requirements.txt      CAD and rendering dependencies
-  overrides.txt         Dependency compatibility override
+  pyproject.toml        CAD and rendering dependencies and PyOpenGL override
+  uv.lock               Fully resolved, hashed dependency lock
 ```
 
 The local `.venv/` is ignored. Old experiments, duplicate renderers and obsolete

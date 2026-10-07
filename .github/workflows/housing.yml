@@ -39,16 +39,14 @@ jobs:
           version: '0.12.23'
           enable-cache: true
           cache-dependency-glob: |
-            housing/requirements.txt
-            housing/overrides.txt
+            housing/uv.lock
       - name: Install rendering libraries
         run: |
           sudo apt-get update
           sudo apt-get install -y libegl1 libgl1 libgl1-mesa-dri libglu1-mesa fonts-dejavu-core
       - name: Install CAD dependencies
         run: |
-          uv venv --python 3.12 .venv
-          uv pip install --python .venv/bin/python -r requirements.txt --override overrides.txt
+          uv sync --locked --python 3.12
       - name: Build and validate RP2040-LCD-1.28 desktop stand
         run: .venv/bin/python build.py stand
       - name: Build and validate RP2040-LCD-1.28 magnetic housing
