@@ -12,7 +12,7 @@ logging, battery calibration, and ring colors):
 | `START_IN_DEBUG_MODE` | `false` | Start in Debug mode when enabled. |
 | `COLOR_TEST_ENABLED` | `true` | Run the RGB boot test before IMU calibration. |
 | `SHOW_SHOT_HISTORY` | `true` | Show the three previous valid shot times. |
-| `DISPLAY_ROTATION_DEGREES` | `90` | Clockwise rotation: `0`, `90`, `180`, or `270`; independent of flip detection. |
+| `DISPLAY_ROTATION_DEGREES` | `270` | Clockwise rotation: `0`, `90`, `180`, or `270`; independent of flip detection. |
 | `DISPLAY_BRIGHTNESS_PERCENT` | `100` | Backlight brightness, `0`–`100`. |
 | `VIBRATION_SENSITIVITY_THRESHOLD` | `1.0` | Per-axis standard deviation threshold in m/s²; higher is less sensitive. |
 | `SLEEP_ENABLED` | `true` | Enable automatic sleep. |

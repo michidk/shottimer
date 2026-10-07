@@ -17,7 +17,7 @@ pub const COLOR_TEST_ENABLED: bool = true;
 pub const SHOW_SHOT_HISTORY: bool = true;
 
 /// Clockwise LCD rotation relative to the current board orientation.
-pub const DISPLAY_ROTATION_DEGREES: u16 = 90;
+pub const DISPLAY_ROTATION_DEGREES: u16 = 270;
 
 /// Backlight PWM duty cycle, from 0 (off) to 100 (full brightness).
 pub const DISPLAY_BRIGHTNESS_PERCENT: u8 = 100;
