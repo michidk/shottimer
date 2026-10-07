@@ -7,7 +7,7 @@ from pathlib import Path
 import json
 import cadquery as cq
 import trimesh
-from .board_reference import import_board
+from .board_reference import board_part, import_board
 from .positions import validate_positions, USB_ANGLES
 
 # ============================================================
@@ -212,7 +212,7 @@ def build(usb='left', magnet='right'):
             invalid_reference_solids.append(index)
         fit_solids.append(solid)
     board_fit = cq.Workplane('XY').newObject([cq.Compound.makeCompound(fit_solids)])
-    socket = board_local.solids().vals()[80].BoundingBox()
+    socket = board_part(board_local,'usb_shell').BoundingBox()
     usb_passage = board_pose(box(usb_cut_start+usb_cut_length-socket.xmin,
                                  socket.ylen,socket.zlen,
                                  ((usb_cut_start+usb_cut_length+socket.xmin)/2,
@@ -246,7 +246,7 @@ def validate(parts):
         assert v < volume_tolerance, (a,b,v)
     # Each rear stop must actually capture PCB material, not merely miss
     # components. Close the 0.15 mm gap plus 0.05 mm to test its contact footprint.
-    pcb = cq.Workplane('XY').newObject([p['board'].solids().vals()[0]])
+    pcb = cq.Workplane('XY').newObject([board_part(p['board'],'pcb')])
     stop_contacts = [overlap(tip.translate((0,-pcb_gap-.05,0)),pcb) for tip in p['stops']]
     assert all(v > volume_tolerance for v in stop_contacts), ('PCB stop coverage',stop_contacts)
     # Load the detached cover from ABOVE, behind the front PCB bridges.

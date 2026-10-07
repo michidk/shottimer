@@ -5,7 +5,7 @@ from pathlib import Path
 import json, math
 import cadquery as cq
 import trimesh
-from .board_reference import import_board
+from .board_reference import board_part, import_board
 
 # PARAMETERS — mm, degrees from vertical
 screen_tilt_deg=20.0
@@ -317,7 +317,7 @@ def main(check_board_insertion=True):
         assert overlap(moved,p['cover'])<1e-5,('battery loading',travel)
     for lift in (0,0.8,1.6,2.4,battery_loading_lift):
         assert overlap(p['battery_pose'](local_pack.translate((0,0,lift))),p['cover'])<1e-5
-    usb=p['board_local'].solids().vals()[80].BoundingBox()
+    usb=board_part(p['board_local'],'usb_shell').BoundingBox()
     lo=usb_back-usb_rearward_mm;hi=usb_front-usb_rearward_mm
     assert lo<usb.zmin<usb.zmax<hi
     assert -usb_width/2<usb.ymin<usb.ymax<usb_width/2
