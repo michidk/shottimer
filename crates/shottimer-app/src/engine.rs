@@ -176,6 +176,9 @@ struct App<'a, P: Platform> {
     shot_timer: ShotTimer,
     previous_state: ShotState,
     battery_monitor: BatteryMonitor,
+    /// Last successfully measured status, reused when an ADC read fails.
+    last_battery: Option<BatteryStatus>,
+    battery_errors: u32,
     recent_peaks: PeakWindow<RECENT_PEAK_WINDOWS>,
     mode_switch: FlipModeSwitch,
     power: Power,
@@ -236,6 +239,8 @@ impl<'a, P: Platform> App<'a, P> {
             previous_state: shot_timer.state(),
             shot_timer,
             battery_monitor: BatteryMonitor::new(),
+            last_battery: None,
+            battery_errors: 0,
             recent_peaks: PeakWindow::new(),
             mode_switch,
             power: Power::Active,
@@ -311,19 +316,41 @@ impl<'a, P: Platform> App<'a, P> {
     }
 
     fn observe(&mut self, samples: &[[f32; 3]; SAMPLE_COUNT]) -> Snapshot {
-        let reading = read_battery(&mut self.board);
         let stats = MotionStats::from_samples(samples);
         let recent_peak = self.recent_peaks.push(stats.peak_deviation);
         let now_ms = self.board.now_ms();
-        let battery =
-            self.battery_monitor
-                .update_voltage(reading.raw_counts, reading.voltage, now_ms);
+        let battery = self.sample_battery(now_ms);
         Snapshot {
             now_ms,
             stats,
             recent_peak,
             battery,
             link: Link::observe(&self.board),
+        }
+    }
+
+    /// Failed ADC reads are counted and keep the last good status instead of
+    /// feeding a fabricated 0 V sample into the filter. Before the first
+    /// successful read the battery reports as disconnected (no percentage).
+    fn sample_battery(&mut self, now_ms: u64) -> BatteryStatus {
+        if !USE_BATTERY {
+            return self.battery_monitor.update_voltage(0, 0.0, now_ms);
+        }
+        match self.board.read_battery() {
+            Ok(reading) => {
+                let status = self.battery_monitor.update_voltage(
+                    reading.raw_counts,
+                    reading.voltage,
+                    now_ms,
+                );
+                self.last_battery = Some(status);
+                status
+            }
+            Err(_) => {
+                self.battery_errors = self.battery_errors.saturating_add(1);
+                self.last_battery
+                    .unwrap_or_else(|| BatteryStatus::from_adc_counts(0))
+            }
         }
     }
 
@@ -551,7 +578,7 @@ impl<'a, P: Platform> App<'a, P> {
             &mut self.board,
             "status",
             format_args!(
-                "state={} idle_ms={} enabled={SLEEP_ENABLED} usb={} blocked_usb={} serial={} sd={:.3} vib={} imu_errors={}",
+                "state={} idle_ms={} enabled={SLEEP_ENABLED} usb={} blocked_usb={} serial={} sd={:.3} vib={} imu_errors={} battery_errors={}",
                 state_label(state),
                 self.shot_timer.idle_ms(now_ms),
                 snapshot.link.powered,
@@ -559,7 +586,8 @@ impl<'a, P: Platform> App<'a, P> {
                 snapshot.link.serial,
                 stats.peak_deviation,
                 stats.is_vibrating(VIBRATION_SENSITIVITY_THRESHOLD),
-                self.imu_errors
+                self.imu_errors,
+                self.battery_errors
             ),
         );
     }
@@ -685,18 +713,6 @@ where
         ),
         // Fresh sensor/battery readings are drawn after the next sample window.
         UiMode::Debug => draw_debug_frame(display),
-    }
-}
-
-fn read_battery<P: Platform>(board: &mut P) -> crate::BatteryReading {
-    let empty = crate::BatteryReading {
-        raw_counts: 0,
-        voltage: 0.0,
-    };
-    if USE_BATTERY {
-        board.read_battery().unwrap_or(empty)
-    } else {
-        empty
     }
 }
 
@@ -859,6 +875,7 @@ mod tests {
         motion_from_ms: u64,
         /// IMU reads fail before this uptime.
         reads_fail_until_ms: u64,
+        battery_fails: bool,
     }
     impl FakeBoard {
         fn new(now: u64, trace: Rc<RefCell<Trace>>) -> Self {
@@ -873,6 +890,7 @@ mod tests {
                 exit_results: VecDeque::new(),
                 motion_from_ms: 80_000,
                 reads_fail_until_ms: 0,
+                battery_fails: false,
             }
         }
         /// The state boot leaves behind: LCD initialized, RGB test done.
@@ -925,6 +943,9 @@ mod tests {
         fn read_battery(&mut self) -> Result<BatteryReading, HardwareError> {
             assert!(!self.asleep, "battery must not be sampled asleep");
             self.trace.borrow_mut().battery_reads += 1;
+            if self.battery_fails {
+                return Err(HardwareError::Battery);
+            }
             Ok(BatteryReading {
                 raw_counts: 2400,
                 // Sustained rising voltage must not block idle sleep or wake it.
@@ -1179,6 +1200,34 @@ mod tests {
         assert_eq!(trace.waits, 2);
         assert_eq!(trace.shows, [None]);
         assert!(trace.backlight);
+    }
+
+    #[test]
+    fn failed_battery_read_keeps_last_good_status() {
+        let trace = Rc::new(RefCell::new(Trace::default()));
+        let board = FakeBoard::booted(1_000, trace);
+        let mut pixels = vec![0; LCD_BUFFER_BYTES];
+        let screen = Screen::new(FrameBuffer::new(&mut pixels, LCD_SIZE, LCD_SIZE));
+        let mut app = App::new(board, screen, 0x6b, 0, calibrated_switch());
+        let samples = [[0.0, 0.0, STANDARD_GRAVITY]; SAMPLE_COUNT];
+
+        app.board.battery_fails = true;
+        let before_first_read = app.observe(&samples).battery;
+        assert!(!before_first_read.connected);
+
+        app.board.battery_fails = false;
+        let good = app.observe(&samples).battery;
+        app.board.battery_fails = true;
+        for _ in 0..5 {
+            assert_eq!(app.observe(&samples).battery, good);
+        }
+        assert_eq!(app.battery_errors, if USE_BATTERY { 6 } else { 0 });
+        if USE_BATTERY {
+            assert!(good.connected);
+            // The filter was not dragged toward 0 V by the failures.
+            app.board.battery_fails = false;
+            assert!(app.observe(&samples).battery.voltage > 3.8);
+        }
     }
 
     #[test]
