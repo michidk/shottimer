@@ -110,7 +110,7 @@ full after 50 seconds while the number continues.
 
 Hold the LCD face-down for 0.5 seconds, then turn it face-up to toggle Timer and
 Debug modes. Orientation filtering adds some response time; switching resets
-the active timer. Set `DEBUG_MODE_ENABLED = false` to disable Debug mode and
+the active timer. Set `debug_mode_enabled = false` to disable Debug mode and
 this gesture.
 
 ## 🐛 Debug mode
@@ -125,9 +125,10 @@ interval are configurable; disabling logs leaves the serial interface available.
 
 ## ⚙️ Configuration
 
-See [config.md](config.md) for compile-time settings, vibration tuning, sleep,
-battery and display options, and hardware assignments. Changes require rebuilding
-and flashing the firmware.
+Each board has a config set in [`configs/`](configs): `esp32s3.toml` and
+`rp2040.toml`. See [config.md](config.md) for the settings, vibration tuning,
+sleep, battery and display options, and hardware assignments. Changes require
+rebuilding and flashing the firmware.
 
 ## 🚀 Build and flash
 

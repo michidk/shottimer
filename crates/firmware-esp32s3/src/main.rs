@@ -26,7 +26,9 @@ use shottimer_app::{
     BatteryReading, HardwareError, Platform, Region, WakeStatus,
     drivers::{self, Display, Imu},
 };
-use shottimer_core::settings::{DISPLAY_BRIGHTNESS_PERCENT, SLEEP_CHECK_INTERVAL_MS};
+use shottimer_core::settings::{
+    BATTERY_VOLTAGE_DIVIDER_RATIO, DISPLAY_BRIGHTNESS_PERCENT, SLEEP_CHECK_INTERVAL_MS,
+};
 esp_bootloader_esp_idf::esp_app_desc!();
 
 #[esp_hal::main]
@@ -107,7 +109,7 @@ fn main() -> ! {
         }
         Ok(BatteryReading {
             raw_counts: (raw / 32) as u16,
-            voltage: millivolts as f32 / 32.0 / 1000.0 / hardware::BATTERY_DIVIDER_RATIO,
+            voltage: millivolts as f32 / 32.0 / 1000.0 / BATTERY_VOLTAGE_DIVIDER_RATIO,
         })
     };
     let serial = UartTx::new(uart_port, UartConfig::default().with_baudrate(115_200))

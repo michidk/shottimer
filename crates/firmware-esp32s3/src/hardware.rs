@@ -1,5 +1,4 @@
 //! Fixed onboard wiring. Alternative assignments require physical rewiring.
-pub const BATTERY_DIVIDER_RATIO: f32 = 1.0 / 3.0;
 macro_rules! select_hardware {
     ($p:ident) => {
         (

@@ -1,0 +1,61 @@
+# Shottimer config set for the Waveshare RP2040-LCD-1.28.
+#
+# Compiled into the firmware: edit, then rebuild and flash. Keys left out use
+# the built-in default; unknown keys and out-of-range values fail the build.
+# See config.md for details on every setting.
+
+# --- Modes and boot ---
+debug_mode_enabled = true
+start_in_debug_mode = false
+color_test_enabled = true
+
+# --- Display ---
+show_shot_history = true
+display_rotation_degrees = 270     # clockwise: 0, 90, 180, or 270
+display_brightness_percent = 100   # backlight PWM, 0-100
+
+# --- Motion sampling and vibration ---
+sample_delay_ms = 10
+vibration_sensitivity_threshold = 1.0   # m/s² per-axis SD; higher is less sensitive
+vibration_sd_deadband = 0.05
+recent_peak_windows = 32
+
+# --- Orientation and flip gesture ---
+calibration_duration_ms = 3000
+screen_vertical_cos_threshold = 0.7
+orientation_filter_alpha = 0.2
+screen_down_hold_ms = 500
+screen_release_debounce_windows = 3
+
+# --- Shot timing ---
+start_confirm_seconds = 2
+shot_timeout_seconds = 99
+minimum_shot_seconds = 5
+restart_confirm_seconds = 3
+completed_shot_hold_seconds = 60
+progress_lap_seconds = 25
+
+# --- Sleep ---
+sleep_enabled = true
+sleep_timeout_seconds = 60
+sleep_wake_threshold_mg = 50
+sleep_check_interval_ms = 500
+allow_sleep_with_serial_connected = true
+
+# --- Logging (USB CDC) ---
+usb_logging_enabled = true
+usb_log_interval_ms = 500
+sleep_diagnostics_enabled = true
+
+# --- Battery ---
+use_battery = true
+battery_adc_reference_volts = 3.3
+battery_voltage_divider_ratio = 0.5
+
+# --- Ring colors (RGB565 channels: red 0-31, green 0-63, blue 0-31) ---
+ring_first_lap_color = [22, 28, 9]
+ring_first_lap_edge_color = [11, 14, 5]
+ring_second_lap_color = [31, 20, 6]
+ring_second_lap_edge_color = [16, 10, 3]
+ring_track_color = [0, 10, 8]
+ring_track_edge_color = [0, 5, 4]

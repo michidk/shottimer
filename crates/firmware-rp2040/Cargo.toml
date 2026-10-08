@@ -8,7 +8,7 @@ repository.workspace = true
 publish = false
 
 [dependencies]
-shottimer-core.workspace = true
+shottimer-core = { workspace = true, features = ["board-rp2040"] }
 shottimer-app.workspace = true
 embedded-hal.workspace = true
 embedded-hal-async.workspace = true

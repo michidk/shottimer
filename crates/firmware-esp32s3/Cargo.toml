@@ -9,7 +9,7 @@ publish = false
 
 [dependencies]
 embassy-embedded-hal = "0.6.0"
-shottimer-core.workspace = true
+shottimer-core = { workspace = true, features = ["board-esp32s3"] }
 shottimer-app.workspace = true
 embedded-hal.workspace = true
 esp-hal = { version = "1.2.2", features = ["esp32s3", "unstable"] }
