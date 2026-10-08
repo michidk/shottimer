@@ -7,7 +7,7 @@ macro_rules! select_hardware {
             $p.GPIO9,  // LCD CS
             $p.GPIO10, // LCD CLK
             $p.GPIO11, // LCD MOSI
-            $p.GPIO12, // LCD reset
+            $p.GPIO14, // LCD reset
             $p.GPIO2,  // LCD backlight
             $p.GPIO1,  // Battery ADC1
             $p.GPIO6,  // IMU SDA

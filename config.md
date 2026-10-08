@@ -86,7 +86,7 @@ Changing them requires matching physical wiring.
 | IMU INT2 (sleep wake) | 24 | 3 |
 | LCD DC / CS | 8 / 9 | 8 / 9 |
 | LCD SCK / MOSI | 10 / 11 | 10 / 11 |
-| LCD reset / backlight | 12 / 25 | 12 / 2 |
+| LCD reset / backlight | 12 / 25 | 14 / 2 |
 | Battery voltage ADC | 29 | 1 |
 | Debug UART TX / RX | USB CDC | 43 / 44 (TX logging only) |
 | Touch reset | — | 13 (touch not implemented) |
