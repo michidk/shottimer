@@ -18,6 +18,8 @@ enum Kind {
     F32,
     /// `[r, g, b]` in native RGB565 channel ranges, emitted as `(u8, u8, u8)`.
     Rgb565,
+    /// `"+X"` .. `"-Z"`, emitted as a unit `[f32; 3]` vector.
+    Axis,
 }
 
 struct Setting {
@@ -49,6 +51,9 @@ const SETTINGS: &[Setting] = &[
     setting("debug_mode_enabled", Bool, "true", "Allow Debug mode at startup and through the mode-switch gesture."),
     setting("start_in_debug_mode", Bool, "false", "Selects the UI shown after the RGB display test."),
     setting("color_test_enabled", Bool, "true", "Show red, green, and blue for one second each before IMU calibration.\nFalse skips only the display test, not calibration."),
+    setting("touch_mode_enabled", Bool, "false", "Switch modes with vertical touchscreen swipes instead of the flip gesture\nand skip boot calibration. Falls back to flip mode without a touch controller."),
+    setting("swipe_min_distance_px", U16, "60", "Minimum finger travel, in display pixels, recognized as a swipe."),
+    setting("screen_up_axis", Axis, "\"+Z\"", "Accelerometer axis pointing out of the screen (`+X`..`-Z`). Replaces boot\ncalibration in touch mode; otherwise unused."),
     // Display.
     setting("show_shot_history", Bool, "true", "Show up to three previous completed shot times throughout Timer mode."),
     setting("display_rotation_degrees", U16, "270", "Clockwise LCD rotation relative to the current board orientation."),
@@ -215,6 +220,23 @@ fn render(setting: &Setting, value: &toml::Value) -> Result<(&'static str, Strin
                 }
             }
             ("(u8, u8, u8)", format!("({})", rendered.join(", ")))
+        }
+        Axis => {
+            let axis = value.as_str().unwrap_or_default();
+            let vector = match axis {
+                "+X" => "[1.0, 0.0, 0.0]",
+                "-X" => "[-1.0, 0.0, 0.0]",
+                "+Y" => "[0.0, 1.0, 0.0]",
+                "-Y" => "[0.0, -1.0, 0.0]",
+                "+Z" => "[0.0, 0.0, 1.0]",
+                "-Z" => "[0.0, 0.0, -1.0]",
+                _ => {
+                    return Err(format!(
+                        "must be one of \"+X\", \"-X\", \"+Y\", \"-Y\", \"+Z\", \"-Z\", got {value}"
+                    ));
+                }
+            };
+            ("[f32; 3]", vector.into())
         }
     })
 }

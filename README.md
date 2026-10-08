@@ -48,9 +48,10 @@ sensor detects the pump vibration automatically.
 | Board | Firmware | Display | Motion sensor | Status |
 | --- | --- | --- | --- | --- |
 | Waveshare RP2040-LCD-1.28 | `firmware-rp2040` | GC9A01, 240×240 | QMI8658 | Hardware-tested |
-| Waveshare ESP32-S3-Touch-LCD-1.28 | `firmware-esp32s3` | GC9A01, 240×240 | QMI8658 | Builds; hardware testing pending |
+| Waveshare ESP32-S3-Touch-LCD-1.28 | `firmware-esp32s3` | GC9A01, 240×240 | QMI8658, CST816S touch | Hardware-tested |
 
-Touch, Wi-Fi, Bluetooth, and PSRAM on the ESP32-S3 board are not used yet.
+Touch switches modes on the ESP32-S3 board; Wi-Fi, Bluetooth, and PSRAM are not
+used yet.
 
 ## 🏠 Housing
 
@@ -91,7 +92,8 @@ flowchart LR
 ## 🔄 How it works
 
 After the three-second RGB display test, keep the display still and face-up during
-boot calibration. The default configuration then starts in Timer mode.
+boot calibration. The default configuration then starts in Timer mode. In touch
+mode (the ESP32-S3 default) calibration is skipped.
 
 - Detects vibration from the largest per-axis standard deviation across ten
   acceleration samples taken at 10 ms intervals.
@@ -110,8 +112,9 @@ full after 50 seconds while the number continues.
 
 Hold the LCD face-down for 0.5 seconds, then turn it face-up to toggle Timer and
 Debug modes. Orientation filtering adds some response time; switching resets
-the active timer. Set `debug_mode_enabled = false` to disable Debug mode and
-this gesture.
+the active timer. In touch mode, swipe up or down instead; "up" follows the
+display rotation, and horizontal swipes are reserved. Set
+`debug_mode_enabled = false` to disable Debug mode and both gestures.
 
 ## 🐛 Debug mode
 

@@ -8,6 +8,12 @@
 debug_mode_enabled = true
 start_in_debug_mode = false
 color_test_enabled = true
+# Swipe up/down to switch Timer <-> Debug instead of flipping the board; skips
+# IMU calibration. Falls back to flip mode if the touch controller is missing.
+touch_mode_enabled = true
+swipe_min_distance_px = 60
+# Accelerometer axis pointing out of the screen, used instead of calibration.
+screen_up_axis = "-Z"
 
 # --- Display ---
 show_shot_history = true
@@ -20,7 +26,7 @@ vibration_sensitivity_threshold = 1.0   # m/s² per-axis SD; higher is less sens
 vibration_sd_deadband = 0.05
 recent_peak_windows = 32
 
-# --- Orientation and flip gesture ---
+# --- Orientation and flip gesture (flip mode only) ---
 calibration_duration_ms = 3000
 screen_vertical_cos_threshold = 0.7
 orientation_filter_alpha = 0.2

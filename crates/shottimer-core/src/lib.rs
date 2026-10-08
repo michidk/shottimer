@@ -5,4 +5,5 @@ pub mod battery;
 pub mod diagnostics;
 pub mod settings;
 pub mod shot_timer;
+pub mod touch;
 pub mod ui_mode;

@@ -13,6 +13,7 @@ macro_rules! select_hardware {
             $p.GPIO7,  // IMU SCL
             $p.GPIO3,  // IMU INT2
             $p.GPIO13, // Touch reset
+            $p.GPIO5,  // Touch INT
             $p.GPIO43, // CH343 UART TX
             $p.SPI2, $p.I2C0, $p.UART0,
         )

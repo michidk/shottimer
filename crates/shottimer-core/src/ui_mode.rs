@@ -119,6 +119,8 @@ pub struct FlipModeSwitch {
     mode: UiMode,
     filtered_vertical: Option<f32>,
     debug_enabled: bool,
+    /// False when another input, such as touch, switches modes.
+    flip_enabled: bool,
     down_since_ms: Option<u64>,
     last_update_ms: u64,
     release_windows: u8,
@@ -136,6 +138,7 @@ impl FlipModeSwitch {
         Self {
             mode: if debug_enabled { mode } else { UiMode::Timer },
             debug_enabled,
+            flip_enabled: true,
             filtered_vertical: None,
             down_since_ms: None,
             last_update_ms: 0,
@@ -165,6 +168,28 @@ impl FlipModeSwitch {
             switch.screen_up_sign = -1.0;
         }
         switch
+    }
+
+    /// Keeps orientation tracking but ignores the flip gesture; modes then
+    /// change only through `toggle`.
+    pub const fn without_flip(mut self) -> Self {
+        self.flip_enabled = false;
+        self
+    }
+
+    /// Switches mode from another input, if Debug mode is enabled.
+    pub fn toggle(&mut self) -> Option<UiMode> {
+        if !self.debug_enabled {
+            return None;
+        }
+        self.down_since_ms = None;
+        self.flip_armed = false;
+        self.release_windows = 0;
+        self.mode = match self.mode {
+            UiMode::Timer => UiMode::Debug,
+            UiMode::Debug => UiMode::Timer,
+        };
+        Some(self.mode)
     }
 
     pub const fn mode(&self) -> UiMode {
@@ -198,7 +223,7 @@ impl FlipModeSwitch {
         };
         self.filtered_vertical = Some(vertical);
 
-        if !self.debug_enabled {
+        if !self.debug_enabled || !self.flip_enabled {
             return None;
         }
 
@@ -225,13 +250,7 @@ impl FlipModeSwitch {
             return None;
         }
 
-        self.release_windows = 0;
-        self.flip_armed = false;
-        self.mode = match self.mode {
-            UiMode::Timer => UiMode::Debug,
-            UiMode::Debug => UiMode::Timer,
-        };
-        Some(self.mode)
+        self.toggle()
     }
 
     pub fn screen_vertical(&self, mean: [f32; 3]) -> f32 {
@@ -435,6 +454,25 @@ mod tests {
             saturated.validate(1),
             Err(CalibrationError::NotGravity { .. })
         ));
+    }
+
+    #[test]
+    fn without_flip_ignores_the_gesture_but_toggles_and_tracks_orientation() {
+        let mut switch = FlipModeSwitch::with_debug_enabled(UiMode::Timer, true).without_flip();
+        repeat(&mut switch, 9.8, 5);
+        assert_eq!(repeat(&mut switch, -9.8, 20), None);
+        assert_eq!(switch.screen_direction(sample(-9.8)), ScreenDirection::Down);
+        assert_eq!(repeat(&mut switch, 9.8, 20), None);
+        assert_eq!(switch.mode(), UiMode::Timer);
+        assert_eq!(switch.toggle(), Some(UiMode::Debug));
+        assert_eq!(switch.toggle(), Some(UiMode::Timer));
+    }
+
+    #[test]
+    fn toggle_respects_disabled_debug_mode() {
+        let mut switch = FlipModeSwitch::with_debug_enabled(UiMode::Timer, false);
+        assert_eq!(switch.toggle(), None);
+        assert_eq!(switch.mode(), UiMode::Timer);
     }
 
     fn advance(switch: &mut FlipModeSwitch, mean: [f32; 3]) -> Option<UiMode> {

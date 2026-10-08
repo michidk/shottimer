@@ -24,6 +24,7 @@ pub enum HardwareError {
     Display,
     Battery,
     Sleep,
+    Touch,
 }
 
 pub trait Platform {
@@ -37,6 +38,16 @@ pub trait Platform {
     /// Signed QMI8658 counts in ±8 g mode, not register bytes.
     fn read_accel_raw(&mut self) -> Result<[i16; 3], HardwareError>;
     fn read_battery(&mut self) -> Result<BatteryReading, HardwareError>;
+    /// Resets and probes the touch controller. `Ok(false)` means the board
+    /// has none; boards without touch keep this default.
+    fn initialize_touch(&mut self) -> Result<bool, HardwareError> {
+        Ok(false)
+    }
+    /// Current touch point in the panel's native pixels, or None while
+    /// untouched or unreadable.
+    fn read_touch(&mut self) -> Option<(u16, u16)> {
+        None
+    }
     fn show(&mut self, buffer: &[u8], regions: Option<&[Region]>) -> Result<(), HardwareError>;
     fn backlight(&mut self, enabled: bool);
     fn poll(&mut self);

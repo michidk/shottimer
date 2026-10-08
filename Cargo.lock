@@ -220,6 +220,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cst816s"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "967157b54d63f79ed49d548182e4bef967145e6627b21d7f67740d0aab243b2e"
+dependencies = [
+ "embedded-hal 1.0.0",
+]
+
+[[package]]
 name = "darling"
 version = "0.21.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -555,6 +564,16 @@ version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c4c685bbef7fe13c3c6dd4da26841ed3980ef33e841cddfa15ce8a8fb3f1884"
 dependencies = [
+ "embedded-hal 1.0.0",
+]
+
+[[package]]
+name = "embedded-hal-bus"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "513e0b3a8fb7d3013a8ae17a834283f170deaf7d0eeab0a7c1a36ad4dd356d22"
+dependencies = [
+ "critical-section",
  "embedded-hal 1.0.0",
 ]
 
@@ -909,8 +928,10 @@ dependencies = [
 name = "firmware-esp32s3"
 version = "0.1.0"
 dependencies = [
+ "cst816s",
  "embassy-embedded-hal",
  "embedded-hal 1.0.0",
+ "embedded-hal-bus",
  "esp-bootloader-esp-idf",
  "esp-hal",
  "panic-halt",

@@ -8,7 +8,9 @@ repository.workspace = true
 publish = false
 
 [dependencies]
+cst816s = "1.0.1"
 embassy-embedded-hal = "0.6.0"
+embedded-hal-bus = "0.3.0"
 shottimer-core = { workspace = true, features = ["board-esp32s3"] }
 shottimer-app.workspace = true
 embedded-hal.workspace = true

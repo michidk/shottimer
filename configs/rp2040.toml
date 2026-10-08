@@ -8,6 +8,11 @@
 debug_mode_enabled = true
 start_in_debug_mode = false
 color_test_enabled = true
+# The RP2040-LCD-1.28 has no touch controller: modes switch by flipping the
+# board face down and back up, using the axis found by boot calibration.
+touch_mode_enabled = false
+swipe_min_distance_px = 60
+screen_up_axis = "+Z"   # unused without touch mode
 
 # --- Display ---
 show_shot_history = true

@@ -3,8 +3,10 @@
 #![forbid(unsafe_code)]
 mod hardware;
 use core::cell::RefCell;
+use cst816s::CST816S;
 use embassy_embedded_hal::adapter::BlockingAsync;
 use embedded_hal::delay::DelayNs;
+use embedded_hal_bus::i2c::RefCellDevice;
 use esp_hal::{
     Blocking,
     analog::adc::{Adc, AdcCalBasic, AdcCalCurve, AdcCalScheme, AdcConfig, Attenuation},
@@ -46,6 +48,7 @@ fn main() -> ! {
         scl,
         irq,
         touch_rst,
+        touch_int,
         tx,
         spi_port,
         i2c_port,
@@ -66,15 +69,22 @@ fn main() -> ! {
     let reset = Output::new(rst, Level::High, OutputConfig::default());
     // The shared runtime initializes the panel and retries on failure.
     let display = Display::new(&spi, &dc, &cs, reset);
-    let _touch_reset = Output::new(touch_rst, Level::High, OutputConfig::default());
-    let i2c = I2c::new(
-        i2c_port,
-        I2cConfig::default().with_frequency(Rate::from_khz(400)),
-    )
-    .unwrap()
-    .with_sda(sda)
-    .with_scl(scl);
-    let imu = Imu::new(BlockingAsync::new(i2c));
+    // The IMU and CST816S touch controller share I2C0.
+    let i2c = RefCell::new(
+        I2c::new(
+            i2c_port,
+            I2cConfig::default().with_frequency(Rate::from_khz(400)),
+        )
+        .unwrap()
+        .with_sda(sda)
+        .with_scl(scl),
+    );
+    let imu = Imu::new(BlockingAsync::new(RefCellDevice::new(&i2c)));
+    let touch = CST816S::new(
+        RefCellDevice::new(&i2c),
+        Input::new(touch_int, InputConfig::default()),
+        Output::new(touch_rst, Level::High, OutputConfig::default()),
+    );
     let irq = Input::new(irq, InputConfig::default());
     let mut ledc = Ledc::new(p.LEDC);
     ledc.set_global_slow_clock(LSGlobalClkSource::APBClk);
@@ -118,6 +128,7 @@ fn main() -> ! {
     shottimer_app::run(Board {
         display,
         imu,
+        touch,
         delay,
         backlight,
         battery,
@@ -126,9 +137,12 @@ fn main() -> ! {
         serial,
     });
 }
+type SharedI2c<'a> = RefCellDevice<'a, I2c<'static, Blocking>>;
+
 struct Board<'a, B> {
     display: Display<'a, Spi<'static, Blocking>, Output<'static>, Output<'static>, Output<'static>>,
-    imu: Imu<BlockingAsync<I2c<'static, Blocking>>>,
+    imu: Imu<BlockingAsync<SharedI2c<'a>>>,
+    touch: CST816S<SharedI2c<'a>, Input<'static>, Output<'static>>,
     delay: Delay,
     backlight: channel::Channel<'a, LowSpeed>,
     battery: B,
@@ -154,6 +168,22 @@ impl<B: FnMut() -> Result<BatteryReading, HardwareError>> Platform for Board<'_,
     }
     fn read_battery(&mut self) -> Result<BatteryReading, HardwareError> {
         (self.battery)()
+    }
+    fn initialize_touch(&mut self) -> Result<bool, HardwareError> {
+        self.touch
+            .setup(&mut self.delay)
+            .map_err(|_| HardwareError::Touch)?;
+        // The controller always answers right after reset; later reads may
+        // NACK while it idles in standby, which read_touch reports as None.
+        self.touch
+            .read_registers()
+            .map_err(|_| HardwareError::Touch)?;
+        Ok(true)
+    }
+    fn read_touch(&mut self) -> Option<(u16, u16)> {
+        self.touch
+            .read_one_touch_event(false)
+            .map(|event| (event.x as u16, event.y as u16))
     }
     fn show(&mut self, b: &[u8], r: Option<&[Region]>) -> Result<(), HardwareError> {
         self.display.show(b, r)

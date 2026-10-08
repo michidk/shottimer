@@ -24,6 +24,7 @@ use shottimer_core::{
     diagnostics::{MotionStats, PeakWindow, SAMPLE_COUNT},
     settings::*,
     shot_timer::{ShotState, ShotTimer},
+    touch::{Swipe, SwipeDetector},
     ui_mode::{CalibrationError, FlipModeSwitch, OrientationCalibration, ScreenAxis, UiMode},
 };
 use static_cell::StaticCell;
@@ -181,14 +182,19 @@ struct App<'a, P: Platform> {
     battery_errors: u32,
     recent_peaks: PeakWindow<RECENT_PEAK_WINDOWS>,
     mode_switch: FlipModeSwitch,
+    /// Vertical swipes switch modes instead of the flip gesture.
+    touch_mode: bool,
+    swipes: SwipeDetector,
+    /// Swipe completed during the current sample window.
+    pending_swipe: Option<Swipe>,
     power: Power,
     last_serial_log_ms: u64,
     last_sleep_log_ms: u64,
 }
 
 impl<'a, P: Platform> App<'a, P> {
-    /// Brings up the LCD and IMU, runs the color test and orientation
-    /// calibration, then shows the initial UI.
+    /// Brings up the LCD, IMU, and touch controller, runs the color test and,
+    /// outside touch mode, orientation calibration, then shows the initial UI.
     fn boot(mut board: P, frame: FrameBuffer<'a>) -> Self {
         let mut screen = Screen::new(frame);
         initialize_display(&mut board);
@@ -197,6 +203,7 @@ impl<'a, P: Platform> App<'a, P> {
             Ok(address) => address,
             Err(_) => imu_fault(board, screen),
         };
+        let touch_mode = TOUCH_MODE_ENABLED && touch_available(&mut board);
         if COLOR_TEST_ENABLED {
             for color in [Rgb565::RED, Rgb565::GREEN, Rgb565::BLUE] {
                 screen.frame.clear(color);
@@ -206,21 +213,24 @@ impl<'a, P: Platform> App<'a, P> {
         }
 
         let mut imu_errors = 0u32;
-        let screen_up_mean = calibrate(&mut board, &mut screen, &mut imu_errors);
         let initial_mode = if DEBUG_MODE_ENABLED && START_IN_DEBUG_MODE {
             UiMode::Debug
         } else {
             UiMode::Timer
         };
+        // Touch mode never flips, so the configured axis replaces calibration
+        // and only feeds the Debug-mode orientation readout.
+        let mode_switch = if touch_mode {
+            FlipModeSwitch::calibrated(initial_mode, SCREEN_UP_AXIS).without_flip()
+        } else {
+            let screen_up_mean = calibrate(&mut board, &mut screen, &mut imu_errors);
+            FlipModeSwitch::calibrated(initial_mode, screen_up_mean)
+        };
         screen.draw_mode_frame(initial_mode);
         screen.present(&mut board, None);
-        Self::new(
-            board,
-            screen,
-            imu_address,
-            imu_errors,
-            FlipModeSwitch::calibrated(initial_mode, screen_up_mean),
-        )
+        let mut app = Self::new(board, screen, imu_address, imu_errors, mode_switch);
+        app.touch_mode = touch_mode;
+        app
     }
 
     fn new(
@@ -243,6 +253,9 @@ impl<'a, P: Platform> App<'a, P> {
             battery_errors: 0,
             recent_peaks: PeakWindow::new(),
             mode_switch,
+            touch_mode: false,
+            swipes: SwipeDetector::new(),
+            pending_swipe: None,
             power: Power::Active,
             last_serial_log_ms: 0,
             last_sleep_log_ms: 0,
@@ -271,9 +284,10 @@ impl<'a, P: Platform> App<'a, P> {
             return;
         };
         let snapshot = self.observe(&samples);
-        let mode_change = self
+        let flip_change = self
             .mode_switch
             .update(snapshot.now_ms, snapshot.stats.mean);
+        let mode_change = flip_change.or_else(|| self.handle_swipe());
         self.log_orientation(&snapshot);
         if let Some(mode) = mode_change {
             self.screen.draw_mode_frame(mode);
@@ -310,9 +324,35 @@ impl<'a, P: Platform> App<'a, P> {
                     self.imu_errors = self.imu_errors.saturating_add(1);
                 }
             }
+            // Polling every sample keeps short swipes from being missed.
+            if self.touch_mode
+                && let Some(swipe) = self.swipes.update(self.board.read_touch())
+            {
+                self.pending_swipe = Some(swipe);
+            }
             self.board.delay_ms(SAMPLE_DELAY_MS);
         }
         read_ok.then_some(samples)
+    }
+
+    /// Vertical swipes toggle Timer/Debug; horizontal swipes are reserved.
+    fn handle_swipe(&mut self) -> Option<UiMode> {
+        let swipe = self.pending_swipe.take()?;
+        let mode = if swipe.direction.is_vertical() {
+            self.mode_switch.toggle()
+        } else {
+            None
+        };
+        write_event(
+            &mut self.board,
+            "touch",
+            "swipe",
+            format_args!(
+                "direction={:?} dx={} dy={} mode={mode:?}",
+                swipe.direction, swipe.dx, swipe.dy
+            ),
+        );
+        mode
     }
 
     fn observe(&mut self, samples: &[[f32; 3]; SAMPLE_COUNT]) -> Snapshot {
@@ -486,6 +526,8 @@ impl<'a, P: Platform> App<'a, P> {
         self.shot_timer.reset(now_ms);
         self.previous_state = self.shot_timer.state();
         self.recent_peaks = PeakWindow::new();
+        self.swipes = SwipeDetector::new();
+        self.pending_swipe = None;
         // Replace the retained framebuffer while the backlight is still
         // off; otherwise waking briefly exposes the pre-sleep value.
         draw_wake_frame(
@@ -610,6 +652,14 @@ fn initialize_display<P: Platform>(board: &mut P) {
             board.delay_ms(100);
         }
     }
+}
+
+/// Touch mode needs a responding controller; otherwise the flip gesture is
+/// kept so modes can still be switched.
+fn touch_available<P: Platform>(board: &mut P) -> bool {
+    let result = board.initialize_touch();
+    write_event(board, "touch", "init", format_args!("result={result:?}"));
+    matches!(result, Ok(true))
 }
 
 /// Without an IMU there is nothing to time: keep the error visible and USB
@@ -876,6 +926,8 @@ mod tests {
         /// IMU reads fail before this uptime.
         reads_fail_until_ms: u64,
         battery_fails: bool,
+        /// Native touch points returned one per poll; None once drained.
+        touches: VecDeque<Option<(u16, u16)>>,
     }
     impl FakeBoard {
         fn new(now: u64, trace: Rc<RefCell<Trace>>) -> Self {
@@ -891,6 +943,7 @@ mod tests {
                 motion_from_ms: 80_000,
                 reads_fail_until_ms: 0,
                 battery_fails: false,
+                touches: VecDeque::new(),
             }
         }
         /// The state boot leaves behind: LCD initialized, RGB test done.
@@ -952,6 +1005,9 @@ mod tests {
                 voltage: 3.85 + self.now as f32 * 0.000_000_1,
             })
         }
+        fn read_touch(&mut self) -> Option<(u16, u16)> {
+            self.touches.pop_front().flatten()
+        }
         fn show(&mut self, buf: &[u8], regions: Option<&[Region]>) -> Result<(), HardwareError> {
             assert!(self.display_ready, "LCD written before initialization");
             assert!(!self.asleep, "LCD written while asleep");
@@ -993,7 +1049,7 @@ mod tests {
             if !bytes.starts_with(b"imu x=") {
                 let line = std::str::from_utf8(bytes).unwrap();
                 assert!(
-                    ["sleep t=", "display t=", "calibration t="]
+                    ["sleep t=", "display t=", "calibration t=", "touch t="]
                         .iter()
                         .any(|prefix| line.starts_with(prefix))
                 );
@@ -1138,6 +1194,34 @@ mod tests {
         assert!(screen.present(&mut board, regions));
         assert!(screen.present(&mut board, regions));
         assert_eq!(trace.borrow().shows, [Some(1), None, None, None, Some(1)]);
+    }
+
+    #[test]
+    fn touch_mode_switches_modes_on_vertical_swipes_only() {
+        let trace = Rc::new(RefCell::new(Trace::default()));
+        let board = FakeBoard::booted(20_000, trace.clone());
+        let mut pixels = vec![0; LCD_BUFFER_BYTES];
+        let screen = Screen::new(FrameBuffer::new(&mut pixels, LCD_SIZE, LCD_SIZE));
+        let mut app = App::new(board, screen, 0x6b, 0, calibrated_switch().without_flip());
+        app.touch_mode = true;
+        // A native stroke along y is vertical on screen unless rotated 90°/270°.
+        let native_y = [(120, 200), (120, 140), (120, 60), (120, 40)];
+        let native_x = native_y.map(|(x, y)| (y, x));
+        let (vertical, horizontal) = if DISPLAY_ROTATION_DEGREES.is_multiple_of(180) {
+            (native_y, native_x)
+        } else {
+            (native_x, native_y)
+        };
+        for (stroke, expected) in [
+            (vertical, UiMode::Debug),
+            (horizontal, UiMode::Debug),
+            (vertical, UiMode::Timer),
+        ] {
+            app.board.touches = stroke.into_iter().map(Some).collect();
+            app.cycle();
+            assert_eq!(app.mode_switch.mode(), expected);
+        }
+        assert!(has_event(&trace.borrow(), "event=swipe"));
     }
 
     #[test]

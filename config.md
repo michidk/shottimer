@@ -23,9 +23,12 @@ Common settings:
 
 | Setting | ESP32-S3 | RP2040 | Meaning |
 |---|---|---|---|
-| `debug_mode_enabled` | `true` | `true` | Enable Debug mode and flip switching. |
+| `debug_mode_enabled` | `true` | `true` | Enable Debug mode and its switching gesture. |
 | `start_in_debug_mode` | `false` | `false` | Start in Debug mode when enabled. |
-| `color_test_enabled` | `true` | `true` | Run the RGB boot test before IMU calibration. |
+| `color_test_enabled` | `true` | `true` | Run the RGB boot test. |
+| `touch_mode_enabled` | `true` | `false` | Swipe to switch modes and skip calibration; see below. |
+| `swipe_min_distance_px` | `60` | `60` | Minimum finger travel recognized as a swipe. |
+| `screen_up_axis` | `"-Z"` | unused | Accelerometer axis out of the screen, replacing calibration in touch mode. |
 | `show_shot_history` | `true` | `true` | Show the three previous valid shot times. |
 | `display_rotation_degrees` | `270` | `270` | Clockwise rotation: `0`, `90`, `180`, or `270`; independent of flip detection. |
 | `display_brightness_percent` | `100` | `100` | Backlight PWM brightness, `0`–`100`. |
@@ -38,6 +41,17 @@ Common settings:
 | `sleep_diagnostics_enabled` | `true` | `true` | Log sleep decisions, wake sources, and failures. |
 | `use_battery` | `true` | `true` | Enable battery monitoring and UI. |
 | `battery_voltage_divider_ratio` | `0.333333` | `0.5` | ADC-input/battery voltage ratio. |
+
+## Touch mode
+
+With `touch_mode_enabled = true` on a board with a touch controller, a vertical
+swipe toggles Timer and Debug modes, and the face-down flip gesture is disabled.
+Directions follow `display_rotation_degrees`, so "up" is toward the top of the
+UI. Horizontal swipes are recognized and logged but reserved for future use.
+Boot calibration is skipped; `screen_up_axis` defines face-up for the Debug-mode
+orientation readout. If the controller does not respond at boot, the firmware
+logs it and falls back to calibration and flip switching. Swipes do not wake the
+board from sleep.
 
 ## Vibration threshold
 
@@ -53,7 +67,7 @@ wake-on-motion mode, and pauses rendering, battery sampling, and regular logs.
 IMU INT2 wakes the MCU, with a status/recovery check every 500 ms. RP2040 uses
 event-based CPU sleep with clocks and RAM retained; ESP32-S3 uses light sleep.
 
-Movement wakes the display; normal vibration confirmation and flip detection
+Movement wakes the display; normal vibration confirmation and mode switching
 then resume. Battery readings never block sleep or wake the board. Disabling
 `sleep_enabled` keeps normal sampling active; retained results still expire.
 
@@ -107,9 +121,10 @@ Changing them requires matching physical wiring.
 | LCD DC / CS | 8 / 9 | 8 / 9 |
 | LCD SCK / MOSI | 10 / 11 | 10 / 11 |
 | LCD reset / backlight | 12 / 25 | 14 / 2 |
-| Touch reset | — | 13 (touch not implemented) |
 | Battery voltage ADC | 29 | 1 |
 | Debug UART TX / RX | USB CDC | 43 / 44 (TX logging only) |
+| Touch SDA / SCL (shared with IMU) | — | 6 / 7 |
+| Touch reset / INT | — | 13 / 5 |
 | LCD / IMU peripheral | SPI1 / I2C1 | SPI2 / I2C0 |
 
 ESP32-S3 mapping and divider follow the
