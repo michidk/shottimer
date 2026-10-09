@@ -2,7 +2,7 @@
 name = "shottimer-housing"
 version = "0.1.0"
 description = "CadQuery models, validation and renders for the shot timer housings"
-requires-python = "==3.12.*"
+requires-python = "==3.14.*"
 dependencies = [
     "cadquery==2.8.0",
     "trimesh==5.1.1",
