@@ -67,8 +67,8 @@ const SETTINGS: &[Setting] = &[
     setting("calibration_duration_ms", U32, "3000", "Nominal IMU calibration sampling duration after the RGB test.\nDisplay transfers add a small amount of overhead."),
     setting("screen_vertical_cos_threshold", F32, "0.7", "Minimum normalized calibrated-axis component accepted as screen-up/down.\n0.7 accepts orientations within roughly 46° of directly face-up/down."),
     setting("orientation_filter_alpha", F32, "0.2", "Weight of each new 100 ms orientation reading in the low-pass filter."),
-    setting("screen_down_hold_ms", U64, "500", "Continuous filtered face-down hold required to arm switching, in milliseconds."),
-    setting("screen_release_debounce_windows", U8, "3", "Consecutive averaged 100 ms face-up windows required to complete a mode change."),
+    setting("screen_down_hold_ms", U64, "500", "Continuous filtered face-down hold required to switch modes, in milliseconds."),
+    setting("screen_release_debounce_windows", U8, "3", "Consecutive averaged 100 ms non-down windows required to allow another mode change."),
     // Shot timing.
     setting("start_confirm_seconds", U64, "2", "Delay before initial vibration is accepted as a shot."),
     setting("shot_timeout_seconds", U64, "99", "Maximum displayed shot duration before timeout."),
@@ -78,7 +78,7 @@ const SETTINGS: &[Setting] = &[
     setting("progress_lap_seconds", U64, "25", "Seconds represented by one complete lap of the Timer-mode progress arc."),
     // Sleep.
     setting("sleep_enabled", Bool, "true", "Allow automatic display/IMU/MCU sleep. False keeps normal sampling and UI active."),
-    setting("sleep_timeout_seconds", U64, "60", "Idle duration before the display backlight is turned off."),
+    setting("sleep_timeout_seconds", U64, "180", "Idle duration before the display backlight is turned off."),
     setting("sleep_wake_threshold_mg", U8, "50", "Hardware wake-on-motion acceleration change, in mg (not vibration SD)."),
     setting("sleep_check_interval_ms", U32, "500", "Low-power recovery/USB service interval; GPIO motion wakes immediately."),
     setting("allow_sleep_with_serial_connected", Bool, "true", "Allow sleep with a serial terminal connected, overriding USB sleep blocking.\nThe terminal does not itself wake the board. Independent of logging settings.\nDisable after testing to restore the normal USB/debugger sleep policy."),

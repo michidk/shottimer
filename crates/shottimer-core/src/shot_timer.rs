@@ -305,7 +305,7 @@ mod tests {
     fn disabled_sleep_policy_prevents_sleep_without_extending_result_retention() {
         let mut timer = ShotTimer::new(0);
         assert_eq!(
-            timer.update_with_sleep_policy(60_000, false, false),
+            timer.update_with_sleep_policy(SLEEP_TIMEOUT_SECONDS * 1000, false, false),
             ShotState::Ready
         );
         let mut timer = completed_timer();
@@ -318,12 +318,17 @@ mod tests {
             ShotState::Ready
         );
         assert_eq!(timer.previous_shots(), [Some(5), None, None]);
+        let sleep_at = 67_000 + SLEEP_TIMEOUT_SECONDS * 1000;
         assert_eq!(
-            timer.update_with_sleep_policy(67_100, false, true),
+            timer.update_with_sleep_policy(sleep_at, false, false),
+            ShotState::Ready
+        );
+        assert_eq!(
+            timer.update_with_sleep_policy(sleep_at, false, true),
             ShotState::Sleeping
         );
         assert_eq!(
-            timer.update_with_sleep_policy(67_200, false, false),
+            timer.update_with_sleep_policy(sleep_at + 100, false, false),
             ShotState::Ready
         );
     }
@@ -474,8 +479,10 @@ mod tests {
     #[test]
     fn sleeps_and_wakes_without_starting_a_shot() {
         let mut timer = ShotTimer::new(0);
-        assert_eq!(timer.update(60_000, false), ShotState::Sleeping);
-        assert_eq!(timer.update(61_000, true), ShotState::Ready);
+        let timeout_ms = SLEEP_TIMEOUT_SECONDS * 1000;
+        assert_eq!(timer.update(timeout_ms - 1, false), ShotState::Ready);
+        assert_eq!(timer.update(timeout_ms, false), ShotState::Sleeping);
+        assert_eq!(timer.update(timeout_ms + 1000, true), ShotState::Ready);
     }
 
     #[test]

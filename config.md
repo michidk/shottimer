@@ -34,7 +34,7 @@ Common settings:
 | `display_brightness_percent` | `100` | `100` | Backlight PWM brightness, `0`–`100`. |
 | `vibration_sensitivity_threshold` | `1.0` | `1.0` | Per-axis standard deviation threshold in m/s²; higher is less sensitive. |
 | `sleep_enabled` | `true` | `true` | Enable automatic sleep. |
-| `sleep_timeout_seconds` | `60` | `60` | Idle time before sleep; completed results use their own hold timeout. |
+| `sleep_timeout_seconds` | `180` | `180` | Idle time before sleep; completed results use their own hold timeout. |
 | `sleep_wake_threshold_mg` | `50` | `50` | Wake-on-motion threshold in mg; higher is less sensitive. |
 | `allow_sleep_with_serial_connected` | `true` | `true` | Allow sleep with a serial terminal attached, overriding USB sleep blocking. |
 | `usb_logging_enabled` | `true` | `true` | Enable diagnostic logs. |

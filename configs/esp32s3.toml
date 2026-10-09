@@ -43,7 +43,7 @@ progress_lap_seconds = 25
 
 # --- Sleep ---
 sleep_enabled = true
-sleep_timeout_seconds = 60
+sleep_timeout_seconds = 180
 sleep_wake_threshold_mg = 50
 sleep_check_interval_ms = 500
 allow_sleep_with_serial_connected = true
