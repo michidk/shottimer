@@ -92,9 +92,7 @@ const SETTINGS: &[Setting] = &[
     setting("battery_voltage_divider_ratio", F32, "0.5", "ADC-input/battery voltage divider ratio."),
     // Ring colors.
     setting("ring_first_lap_color", Rgb565, "[22, 28, 9]", "Ring palette in native RGB565 channel values: red 0..31, green 0..63,\nblue 0..31. Edge shades soften the outer pixel boundary of each arc."),
-    setting("ring_first_lap_edge_color", Rgb565, "[11, 14, 5]", "First-lap arc edge shade."),
-    setting("ring_second_lap_color", Rgb565, "[31, 20, 6]", "Second-lap arc color."),
-    setting("ring_second_lap_edge_color", Rgb565, "[16, 10, 3]", "Second-lap arc edge shade."),
+    setting("ring_first_lap_edge_color", Rgb565, "[11, 14, 5]", "Progress arc edge shade."),
     setting("ring_track_color", Rgb565, "[0, 10, 8]", "Unfilled ring track color."),
     setting("ring_track_edge_color", Rgb565, "[0, 5, 4]", "Unfilled ring track edge shade."),
 ];

@@ -107,8 +107,8 @@ mode (the ESP32-S3 default) calibration is skipped.
 - Shows three previous valid shot times, newest first, excluding the current
   result. History survives resets, mode switches, and sleep, but clears on reboot.
 
-The progress arc fills in two brown shades over two 25-second laps, remaining
-full after 50 seconds while the number continues.
+The progress arc fills over 25 seconds and stays full while the number
+continues.
 
 Hold the LCD face-down for 0.5 seconds to toggle Timer and Debug modes. No prior
 face-up state is needed. Holding it down triggers only once; move it to any

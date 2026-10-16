@@ -10,9 +10,8 @@ use embedded_graphics::{
 };
 use shottimer_core::{
     settings::{
-        PROGRESS_LAP_SECONDS, RING_FIRST_LAP_COLOR, RING_FIRST_LAP_EDGE_COLOR,
-        RING_SECOND_LAP_COLOR, RING_SECOND_LAP_EDGE_COLOR, RING_TRACK_COLOR, RING_TRACK_EDGE_COLOR,
-        SHOW_SHOT_HISTORY,
+        PROGRESS_LAP_SECONDS, RING_FIRST_LAP_COLOR, RING_FIRST_LAP_EDGE_COLOR, RING_TRACK_COLOR,
+        RING_TRACK_EDGE_COLOR, SHOW_SHOT_HISTORY,
     },
     shot_timer::ShotState,
 };
@@ -24,8 +23,6 @@ use u8g2_fonts::{
 
 const FIRST_LAP_COLOR: Rgb565 = ring_color(RING_FIRST_LAP_COLOR);
 const FIRST_LAP_EDGE: Rgb565 = ring_color(RING_FIRST_LAP_EDGE_COLOR);
-const SECOND_LAP_COLOR: Rgb565 = ring_color(RING_SECOND_LAP_COLOR);
-const SECOND_LAP_EDGE: Rgb565 = ring_color(RING_SECOND_LAP_EDGE_COLOR);
 const TRACK: Rgb565 = ring_color(RING_TRACK_COLOR);
 const TRACK_EDGE: Rgb565 = ring_color(RING_TRACK_EDGE_COLOR);
 
@@ -191,10 +188,6 @@ where
     }
 
     draw_progress_lap(display, first_lap, FIRST_LAP_EDGE, FIRST_LAP_COLOR);
-    if seconds > PROGRESS_LAP_SECONDS {
-        let second_lap = (seconds - PROGRESS_LAP_SECONDS).min(PROGRESS_LAP_SECONDS);
-        draw_progress_lap(display, second_lap, SECOND_LAP_EDGE, SECOND_LAP_COLOR);
-    }
 }
 
 fn draw_progress_lap<D>(display: &mut D, seconds: u64, edge: Rgb565, core: Rgb565)
