@@ -7,6 +7,10 @@ const CONNECTED_THRESHOLD_VOLTS: f32 = 2.5;
 const FILTER_ALPHA: f32 = 0.2;
 const TREND_WINDOW_MS: u64 = 30_000;
 const TREND_DEADBAND_MV_PER_MINUTE: i16 = 5;
+// Load relaxation and ADC noise can pass the trend deadband once; charging
+// keeps a clear rise across consecutive windows.
+const CHARGING_MV_PER_MINUTE: i16 = 10;
+const CHARGING_CONFIRM_WINDOWS: u8 = 2;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum VoltageTrend {
@@ -26,12 +30,14 @@ pub struct BatteryStatus {
     pub voltage_trend: VoltageTrend,
     pub millivolts_per_minute: i16,
     pub trend_ready: bool,
+    /// Consecutive trend windows rising at least `CHARGING_MV_PER_MINUTE`.
+    pub charging_windows: u8,
 }
 
 impl BatteryStatus {
     /// Voltage-rise heuristic, not a reading of the charger's inaccessible STAT pin.
     pub fn charging_indicated(&self) -> bool {
-        self.connected && self.voltage_trend == VoltageTrend::Rising
+        self.connected && self.charging_windows >= CHARGING_CONFIRM_WINDOWS
     }
 
     pub fn from_adc_counts(counts: u16) -> Self {
@@ -46,6 +52,7 @@ impl BatteryStatus {
             voltage_trend: VoltageTrend::Unknown,
             millivolts_per_minute: 0,
             trend_ready: false,
+            charging_windows: 0,
         }
     }
 }
@@ -58,6 +65,7 @@ pub struct BatteryMonitor {
     baseline_ms: u64,
     millivolts_per_minute: i16,
     trend_ready: bool,
+    charging_windows: u8,
 }
 
 impl BatteryMonitor {
@@ -74,6 +82,7 @@ impl BatteryMonitor {
             baseline_ms: 0,
             millivolts_per_minute: 0,
             trend_ready: false,
+            charging_windows: 0,
         }
     }
 
@@ -110,6 +119,7 @@ impl BatteryMonitor {
             self.baseline_voltage = None;
             self.millivolts_per_minute = 0;
             self.trend_ready = false;
+            self.charging_windows = 0;
         } else if let Some(baseline_voltage) = self.baseline_voltage {
             let elapsed_ms = now_ms.saturating_sub(self.baseline_ms);
             if elapsed_ms >= TREND_WINDOW_MS {
@@ -117,6 +127,11 @@ impl BatteryMonitor {
                 self.millivolts_per_minute =
                     libm::roundf(rate.clamp(i16::MIN as f32, i16::MAX as f32)) as i16;
                 self.trend_ready = true;
+                self.charging_windows = if self.millivolts_per_minute >= CHARGING_MV_PER_MINUTE {
+                    self.charging_windows.saturating_add(1)
+                } else {
+                    0
+                };
                 self.baseline_voltage = Some(status.voltage);
                 self.baseline_ms = now_ms;
             }
@@ -127,6 +142,7 @@ impl BatteryMonitor {
 
         status.millivolts_per_minute = self.millivolts_per_minute;
         status.trend_ready = self.trend_ready;
+        status.charging_windows = self.charging_windows;
         status.voltage_trend = if !self.trend_ready {
             VoltageTrend::Unknown
         } else if self.millivolts_per_minute > TREND_DEADBAND_MV_PER_MINUTE {
@@ -222,15 +238,35 @@ mod tests {
     fn charging_indicator_requires_a_connected_battery_and_rising_voltage() {
         let mut status = BatteryStatus::from_adc_counts(2500);
         assert!(!status.charging_indicated());
-        status.voltage_trend = VoltageTrend::Rising;
+        status.charging_windows = CHARGING_CONFIRM_WINDOWS;
         assert!(status.charging_indicated());
-        status.voltage_trend = VoltageTrend::Stable;
-        assert!(!status.charging_indicated());
-        status.voltage_trend = VoltageTrend::Falling;
-        assert!(!status.charging_indicated());
-        status.voltage_trend = VoltageTrend::Rising;
         status.connected = false;
         assert!(!status.charging_indicated());
+    }
+
+    #[test]
+    fn charging_needs_a_sustained_clear_rise() {
+        let mut monitor = BatteryMonitor::with_battery_enabled(true);
+        let mut window = 0;
+        let mut at = |volts: f32| {
+            window += 1;
+            monitor.update_voltage(0, volts, window * TREND_WINDOW_MS)
+        };
+        at(3.90);
+        // One relaxation bump is a rising trend but not charging.
+        let bump = at(3.95);
+        assert_eq!(bump.voltage_trend, VoltageTrend::Rising);
+        assert!(!bump.charging_indicated());
+        assert!(!at(3.90).charging_indicated());
+        // A sustained 30 mV/min rise is charging.
+        let mut volts = 3.90;
+        let charging = (0..6).any(|_| {
+            volts += 0.015;
+            at(volts).charging_indicated()
+        });
+        assert!(charging);
+        // Once the voltage plateaus, the indicator clears.
+        assert!((0..10).any(|_| !at(volts).charging_indicated()));
     }
 
     #[test]
