@@ -19,6 +19,12 @@
         "embedded-hal-02"
       ],
       "allowedVersions": "<1.0.0"
+    },
+    {
+      "matchDepNames": [
+        "python"
+      ],
+      "allowedVersions": "<3.15"
     }
   ]
 }
