@@ -8,7 +8,7 @@ dependencies = [
     "trimesh==5.2.0",
     "pyrender==0.1.45",
     "Pillow==13.0.0",
-    "numpy==2.5.3",
+    "numpy==2.5.4",
     "lxml==6.1.3",
 ]
 
