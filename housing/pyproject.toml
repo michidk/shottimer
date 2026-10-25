@@ -5,9 +5,9 @@ description = "CadQuery models, validation and renders for the shot timer housin
 requires-python = "==3.12.*"
 dependencies = [
     "cadquery==2.8.0",
-    "trimesh==5.1.1",
+    "trimesh==5.2.0",
     "pyrender==0.1.45",
-    "Pillow==12.3.0",
+    "Pillow==13.0.0",
     "numpy==2.5.3",
     "lxml==6.1.3",
 ]
