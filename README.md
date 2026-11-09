@@ -124,9 +124,11 @@ Debug mode shows IMU address/errors, acceleration mean and standard deviation,
 filtered orientation, vibration threshold and rolling peak, timer/idle state,
 and battery voltage, estimated charge, ADC value, and trend.
 
-Both boards log acceleration and orientation twice per second: RP2040 through
+With `usb_logging_enabled = true`, both boards log acceleration and orientation
+twice per second: RP2040 through
 USB CDC, ESP32-S3 through its CH343 UART bridge at 115200 baud. Logging and its
-interval are configurable; disabling logs leaves the serial interface available.
+interval are configurable. Logs are disabled by default; the serial interface
+remains available.
 
 ## ⚙️ Configuration
 

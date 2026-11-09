@@ -31,15 +31,16 @@ Common settings:
 | `screen_up_axis` | `"-Z"` | unused | Accelerometer axis out of the screen, replacing calibration in touch mode. |
 | `show_shot_history` | `true` | `true` | Show the three previous valid shot times. |
 | `display_rotation_degrees` | `270` | `270` | Clockwise rotation: `0`, `90`, `180`, or `270`; independent of flip detection. |
-| `display_brightness_percent` | `100` | `100` | Backlight PWM brightness, `0`–`100`. |
+| `display_brightness_percent` | `50` | `50` | Backlight PWM brightness, `0`–`100`. |
 | `vibration_sensitivity_threshold` | `1.0` | `1.0` | Per-axis standard deviation threshold in m/s²; higher is less sensitive. |
 | `sleep_enabled` | `true` | `true` | Enable automatic sleep. |
-| `sleep_timeout_seconds` | `180` | `180` | Idle time before sleep; completed results use their own hold timeout. |
+| `sleep_timeout_seconds` | `60` | `60` | Idle time before sleep; completed results use their own hold timeout. |
 | `sleep_wake_threshold_mg` | `50` | `50` | Wake-on-motion threshold in mg; higher is less sensitive. |
 | `allow_sleep_with_serial_connected` | `true` | `true` | Allow sleep with a serial terminal attached, overriding USB sleep blocking. |
-| `usb_logging_enabled` | `true` | `true` | Enable diagnostic logs. |
-| `sleep_diagnostics_enabled` | `true` | `true` | Log sleep decisions, wake sources, and failures. |
+| `usb_logging_enabled` | `false` | `false` | Enable diagnostic logs. |
+| `sleep_diagnostics_enabled` | `false` | `false` | Log sleep decisions, wake sources, and failures. |
 | `use_battery` | `true` | `true` | Enable battery monitoring and UI. |
+| `battery_sample_interval_ms` | `1000` | `1000` | Minimum time between battery ADC attempts, including failures. |
 | `battery_voltage_divider_ratio` | `0.333333` | `0.5` | ADC-input/battery voltage ratio. |
 
 ## Touch mode
@@ -78,7 +79,19 @@ restore the normal USB/debugger policy. Serial servicing and diagnostic logs
 add overhead, so measure power savings without a terminal connected. Actual
 current savings and wake sensitivity still require hardware testing.
 
+Both boards default to 50% backlight brightness and sleep after 60 seconds of
+inactivity. Completed results remain visible for 60 seconds. Serial logging and
+sleep diagnostics are off by default; enable `usb_logging_enabled` and, for
+sleep traces, `sleep_diagnostics_enabled` when troubleshooting.
+
 ## Battery and colors
+
+Battery voltage is sampled once per second by default. The UI reuses the last
+successful reading between attempts and after ADC failures. Failed attempts
+follow the same interval, and waking schedules a fresh reading on the first
+active motion window. Increasing `battery_sample_interval_ms` reduces ADC work
+but slows the voltage filter and charge-trend response. The interval must be
+positive. Battery monitoring pauses during sleep.
 
 With `use_battery = true`, Timer mode shows a green inner ring and charge
 percentage when voltage rises or, on RP2040, a USB host is connected. Charge is

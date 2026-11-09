@@ -179,6 +179,7 @@ struct App<'a, P: Platform> {
     battery_monitor: BatteryMonitor,
     /// Last successfully measured status, reused when an ADC read fails.
     last_battery: Option<BatteryStatus>,
+    last_battery_attempt_ms: Option<u64>,
     battery_errors: u32,
     recent_peaks: PeakWindow<RECENT_PEAK_WINDOWS>,
     mode_switch: FlipModeSwitch,
@@ -250,6 +251,7 @@ impl<'a, P: Platform> App<'a, P> {
             shot_timer,
             battery_monitor: BatteryMonitor::new(),
             last_battery: None,
+            last_battery_attempt_ms: None,
             battery_errors: 0,
             recent_peaks: PeakWindow::new(),
             mode_switch,
@@ -376,6 +378,15 @@ impl<'a, P: Platform> App<'a, P> {
         if !USE_BATTERY {
             return self.battery_monitor.update_voltage(0, 0.0, now_ms);
         }
+        if self
+            .last_battery_attempt_ms
+            .is_some_and(|last| now_ms.saturating_sub(last) < BATTERY_SAMPLE_INTERVAL_MS)
+        {
+            return self
+                .last_battery
+                .unwrap_or_else(|| BatteryStatus::from_adc_counts(0));
+        }
+        self.last_battery_attempt_ms = Some(now_ms);
         match self.board.read_battery() {
             Ok(reading) => {
                 let status = self.battery_monitor.update_voltage(
@@ -522,6 +533,7 @@ impl<'a, P: Platform> App<'a, P> {
 
     /// Restarts active sampling after the IMU and LCD were restored.
     fn resume(&mut self) {
+        self.last_battery_attempt_ms = None;
         let now_ms = self.board.now_ms();
         self.shot_timer.reset(now_ms);
         self.previous_state = self.shot_timer.state();
@@ -1107,7 +1119,7 @@ mod tests {
         assert_eq!(trace.display_inits, 1);
         assert!(trace.reads >= 300);
         assert_eq!(trace.battery_reads > 0, USE_BATTERY);
-        assert!(trace.logs > 100);
+        assert_eq!(trace.logs > 0, USB_LOGGING_ENABLED);
         assert_eq!(trace.sleeps, usize::from(SLEEP_ENABLED));
         assert_eq!(trace.wakes, usize::from(SLEEP_ENABLED));
         assert_eq!(trace.waits > 0, SLEEP_ENABLED);
@@ -1221,7 +1233,10 @@ mod tests {
             app.cycle();
             assert_eq!(app.mode_switch.mode(), expected);
         }
-        assert!(has_event(&trace.borrow(), "event=swipe"));
+        assert_eq!(
+            has_event(&trace.borrow(), "event=swipe"),
+            USB_LOGGING_ENABLED
+        );
     }
 
     #[test]
@@ -1287,6 +1302,30 @@ mod tests {
     }
 
     #[test]
+    fn battery_attempts_are_spaced_and_refresh_after_resume() {
+        let trace = Rc::new(RefCell::new(Trace::default()));
+        let board = FakeBoard::booted(0, trace.clone());
+        let mut pixels = vec![0; LCD_BUFFER_BYTES];
+        let screen = Screen::new(FrameBuffer::new(&mut pixels, LCD_SIZE, LCD_SIZE));
+        let mut app = App::new(board, screen, 0x6b, 0, calibrated_switch());
+        let expected = usize::from(USE_BATTERY);
+        app.board.battery_fails = true;
+        assert!(!app.sample_battery(0).connected);
+        assert!(!app.sample_battery(BATTERY_SAMPLE_INTERVAL_MS - 1).connected);
+        assert_eq!(trace.borrow().battery_reads, expected);
+        app.board.battery_fails = false;
+        let good = app.sample_battery(BATTERY_SAMPLE_INTERVAL_MS);
+        assert_eq!(good.connected, USE_BATTERY);
+        assert_eq!(trace.borrow().battery_reads, 2 * expected);
+        assert_eq!(app.sample_battery(BATTERY_SAMPLE_INTERVAL_MS), good);
+        assert_eq!(trace.borrow().battery_reads, 2 * expected);
+        app.board.now = BATTERY_SAMPLE_INTERVAL_MS;
+        app.resume();
+        app.sample_battery(app.board.now);
+        assert_eq!(trace.borrow().battery_reads, 3 * expected);
+    }
+
+    #[test]
     fn failed_battery_read_keeps_last_good_status() {
         let trace = Rc::new(RefCell::new(Trace::default()));
         let board = FakeBoard::booted(1_000, trace);
@@ -1299,16 +1338,19 @@ mod tests {
         let before_first_read = app.observe(&samples).battery;
         assert!(!before_first_read.connected);
 
+        app.board.now += BATTERY_SAMPLE_INTERVAL_MS;
         app.board.battery_fails = false;
         let good = app.observe(&samples).battery;
         app.board.battery_fails = true;
         for _ in 0..5 {
+            app.board.now += BATTERY_SAMPLE_INTERVAL_MS;
             assert_eq!(app.observe(&samples).battery, good);
         }
         assert_eq!(app.battery_errors, if USE_BATTERY { 6 } else { 0 });
         if USE_BATTERY {
             assert!(good.connected);
             // The filter was not dragged toward 0 V by the failures.
+            app.board.now += BATTERY_SAMPLE_INTERVAL_MS;
             app.board.battery_fails = false;
             assert!(app.observe(&samples).battery.voltage > 3.8);
         }

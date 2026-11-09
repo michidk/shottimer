@@ -18,7 +18,7 @@ screen_up_axis = "-Z"
 # --- Display ---
 show_shot_history = true
 display_rotation_degrees = 270     # clockwise: 0, 90, 180, or 270
-display_brightness_percent = 100   # backlight PWM, 0-100
+display_brightness_percent = 50   # backlight PWM, 0-100
 
 # --- Motion sampling and vibration ---
 sample_delay_ms = 10
@@ -43,18 +43,19 @@ progress_lap_seconds = 25
 
 # --- Sleep ---
 sleep_enabled = true
-sleep_timeout_seconds = 180
+sleep_timeout_seconds = 60
 sleep_wake_threshold_mg = 50
 sleep_check_interval_ms = 500
 allow_sleep_with_serial_connected = true
 
 # --- Logging (CH343 UART, 115200 baud) ---
-usb_logging_enabled = true
+usb_logging_enabled = false
 usb_log_interval_ms = 500
-sleep_diagnostics_enabled = true
+sleep_diagnostics_enabled = false
 
 # --- Battery ---
 use_battery = true
+battery_sample_interval_ms = 1000
 battery_adc_reference_volts = 3.3        # unused: the ESP32-S3 ADC is calibrated in mV
 battery_voltage_divider_ratio = 0.333333 # 200 kΩ / 100 kΩ divider
 

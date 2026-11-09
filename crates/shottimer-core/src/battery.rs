@@ -271,9 +271,12 @@ mod tests {
 
     #[test]
     fn converts_the_board_voltage_divider() {
-        let status = BatteryStatus::from_adc_counts(2_544);
+        let counts = libm::roundf(
+            4.1 * BATTERY_VOLTAGE_DIVIDER_RATIO / BATTERY_ADC_REFERENCE_VOLTS * ADC_MAX_COUNT,
+        ) as u16;
+        let status = BatteryStatus::from_adc_counts(counts);
         assert!((status.voltage - 4.1).abs() < 0.01);
-        assert_eq!(status.raw_counts, 2_544);
+        assert_eq!(status.raw_counts, counts);
         assert!(status.connected);
         assert_eq!(status.charge_percent, 90);
     }
@@ -289,6 +292,23 @@ mod tests {
     fn interpolates_single_cell_lipo_charge() {
         assert_eq!(estimate_charge_percent(3.775), 35);
         assert_eq!(estimate_charge_percent(4.30), 100);
+    }
+
+    #[test]
+    fn one_second_sampling_distinguishes_relaxation_from_charging() {
+        let mut monitor = BatteryMonitor::with_battery_enabled(true);
+        monitor.update_voltage(2400, 3.8, 0);
+        for second in 1..=120 {
+            let status = monitor.update_voltage(2400, 3.9, second * 1000);
+            assert!(!status.charging_indicated());
+        }
+        for second in 121..=300 {
+            let volts = 3.9 + (second - 120) as f32 * 0.0005;
+            monitor.update_voltage(2400, volts, second * 1000);
+        }
+        let status = monitor.update_voltage(2400, 3.99, 301_000);
+        assert!(status.charging_indicated());
+        assert_eq!(status.voltage_trend, VoltageTrend::Rising);
     }
 
     #[test]

@@ -57,7 +57,7 @@ const SETTINGS: &[Setting] = &[
     // Display.
     setting("show_shot_history", Bool, "true", "Show up to three previous completed shot times throughout Timer mode."),
     setting("display_rotation_degrees", U16, "270", "Clockwise LCD rotation relative to the current board orientation."),
-    setting("display_brightness_percent", U8, "100", "Backlight PWM duty cycle, from 0 (off) to 100 (full brightness)."),
+    setting("display_brightness_percent", U8, "50", "Backlight PWM duty cycle, from 0 (off) to 100 (full brightness)."),
     // Motion sampling and vibration.
     setting("sample_delay_ms", U32, "10", "Delay between accelerometer readings in one motion window."),
     setting("vibration_sensitivity_threshold", F32, "1.0", "Peak per-axis standard deviation that counts as vibration, in m/s².\nIncrease this value to reduce sensitivity; decrease it to detect weaker vibration."),
@@ -78,16 +78,17 @@ const SETTINGS: &[Setting] = &[
     setting("progress_lap_seconds", U64, "25", "Seconds represented by one complete lap of the Timer-mode progress arc."),
     // Sleep.
     setting("sleep_enabled", Bool, "true", "Allow automatic display/IMU/MCU sleep. False keeps normal sampling and UI active."),
-    setting("sleep_timeout_seconds", U64, "180", "Idle duration before the display backlight is turned off."),
+    setting("sleep_timeout_seconds", U64, "60", "Idle duration before the display backlight is turned off."),
     setting("sleep_wake_threshold_mg", U8, "50", "Hardware wake-on-motion acceleration change, in mg (not vibration SD)."),
     setting("sleep_check_interval_ms", U32, "500", "Low-power recovery/USB service interval; GPIO motion wakes immediately."),
     setting("allow_sleep_with_serial_connected", Bool, "true", "Allow sleep with a serial terminal connected, overriding USB sleep blocking.\nThe terminal does not itself wake the board. Independent of logging settings.\nDisable after testing to restore the normal USB/debugger sleep policy."),
     // Logging.
-    setting("usb_logging_enabled", Bool, "true", "Emit serial diagnostics when a terminal is connected."),
+    setting("usb_logging_enabled", Bool, "false", "Emit serial diagnostics when a terminal is connected."),
     setting("usb_log_interval_ms", U64, "500", "Interval between periodic serial status lines."),
-    setting("sleep_diagnostics_enabled", Bool, "true", "Log sleep decisions, wake sources, and failures. Does not change sleep policy."),
+    setting("sleep_diagnostics_enabled", Bool, "false", "Log sleep decisions, wake sources, and failures. Does not change sleep policy."),
     // Battery.
     setting("use_battery", Bool, "true", "Enable battery monitoring, charge estimates, and battery UI.\nThe charger can power the measured rail over USB without a battery."),
+    setting("battery_sample_interval_ms", U64, "1000", "Minimum interval between battery ADC attempts, including failed reads, in milliseconds."),
     setting("battery_adc_reference_volts", F32, "3.3", "Battery ADC reference voltage for boards that report raw counts."),
     setting("battery_voltage_divider_ratio", F32, "0.5", "ADC-input/battery voltage divider ratio."),
     // Ring colors.
