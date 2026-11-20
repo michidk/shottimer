@@ -20,12 +20,11 @@
 <p align="center">
   <a href="https://github.com/michidk/shottimer/actions/workflows/firmware.yml"><img alt="Firmware" src="https://github.com/michidk/shottimer/actions/workflows/firmware.yml/badge.svg"></a>
   <a href="https://github.com/michidk/shottimer/actions/workflows/housing.yml"><img alt="Housing CAD" src="https://github.com/michidk/shottimer/actions/workflows/housing.yml/badge.svg"></a>
-  <a href="https://www.rust-lang.org/"><img alt="Rust 2024" src="https://img.shields.io/badge/Rust-2024-b7410e?logo=rust&amp;logoColor=white"></a>
   <a href="#-license"><img alt="License: MIT OR Apache-2.0" src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg"></a>
 </p>
 
 <p align="center">
-  <img src=".github/images/shottimer.png" alt="Shot timer running on an espresso machine" width="960">
+  <img src=".github/images/shottimer.png" alt="Shot timer running on an espresso machine" width="800">
 </p>
 
 ---
@@ -60,7 +59,7 @@ and a MakerFocus 2000 mAh battery: a desktop stand and a magnetic version for
 mounting directly to the machine.
 
 <p align="center">
-  <img src=".github/images/housing-overview.png" alt="Desktop stand and magnetic housing" width="960">
+  <img src=".github/images/housing-overview.png" alt="Desktop stand and magnetic housing" width="800">
 </p>
 
 **View on [GitHub](https://github.com/michidk/shottimer/tree/main/housing)
