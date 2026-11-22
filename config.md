@@ -8,7 +8,7 @@ Settings are compiled into the firmware from a TOML config set per board:
 | RP2040-LCD-1.28 | [`configs/rp2040.toml`](configs/rp2040.toml) |
 
 Each firmware build selects its board's file automatically. Edit it, then
-[rebuild and flash the firmware](README.md#build-and-flash) to apply changes. To
+[rebuild and flash the firmware](README.md#-build-and-flash) to apply changes. To
 use a private file instead, set `SHOTTIMER_CONFIG` to its path (relative to the
 repository root), e.g. `SHOTTIMER_CONFIG=configs/my-machine.toml cargo +esp esp32s3`.
 
