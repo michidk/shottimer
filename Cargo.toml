@@ -22,7 +22,7 @@ heapless = "0.9.1"
 libm = "0.2.15"
 ph-qmi8658 = { git = "https://github.com/michidk/ph-qmi8658-imu.git", rev = "35b4a03714aa1b609b03e970576986a02b79fbcb" }
 static_cell = "2.1.1"
-u8g2-fonts = "0.8.0"
+u8g2-fonts = "0.9.0"
 
 [profile.dev]
 codegen-units = 1
